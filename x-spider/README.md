@@ -381,6 +381,20 @@ When `--webhook-data` (or `webhook_data: true`) is enabled, the HTTP POST payloa
 }
 ```
 
+### Stateful Resume & Deduplication (`--session-id` & `--since-id`)
+
+When running automated pipelines or streaming directly to your backend, you can pass a persistent `--session-id`:
+
+```bash
+# First crawl: creates session tracking in ~/.x-spider/sessions.db
+.\x-spider.exe -s "machine learning" --session-id "job_ml_01" --webhook-url "https://api.yourdomain.com/ingest" --webhook-data --no-file
+
+# Subsequent crawl: automatically skips previously crawled tweets and streams ONLY new content
+.\x-spider.exe -s "machine learning" --session-id "job_ml_01" --webhook-url "https://api.yourdomain.com/ingest" --webhook-data --no-file
+```
+
+`x-spider` automatically stores seen tweet IDs and the session's `since_id` inside `~/.x-spider/sessions.db` (SQLite). You can also pass `--since-id <ID>` manually to enforce a lower-bound ID cutoff.
+
 ---
 
 ## Gephi Network Conversion

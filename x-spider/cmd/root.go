@@ -230,6 +230,12 @@ func mergeConfig(source *config.Config, target *config.Config) {
 	if source.WebhookData {
 		target.WebhookData = true
 	}
+	if source.SessionID != "" && target.SessionID == "" {
+		target.SessionID = source.SessionID
+	}
+	if source.SinceID != "" && target.SinceID == "" {
+		target.SinceID = source.SinceID
+	}
 }
 
 func init() {
@@ -257,4 +263,6 @@ func init() {
 	RootCmd.Flags().StringVar(&cfg.Notifications.WebhookURL, "webhook-url", "", "Custom HTTP webhook endpoint to receive crawl events")
 	RootCmd.Flags().BoolVar(&cfg.WebhookData, "webhook-data", false, "Include crawled tweet data records in webhook payload")
 	RootCmd.Flags().BoolVar(&cfg.NoFile, "no-file", false, "Stream directly to webhook without saving files locally")
+	RootCmd.Flags().StringVar(&cfg.SessionID, "session-id", "", "Persistent SQLite session ID for stateful deduplication and tracking")
+	RootCmd.Flags().StringVar(&cfg.SinceID, "since-id", "", "Filter out tweets older than or equal to this tweet ID")
 }

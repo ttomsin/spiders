@@ -71,6 +71,8 @@ type Config struct {
 	MinLength                int             `yaml:"min_length" json:"min_length"`
 	NoFile                   bool            `yaml:"no_file" json:"no_file"`                   // Stream/webhook only, skip saving to disk
 	WebhookData              bool            `yaml:"webhook_data" json:"webhook_data"`         // Include crawled tweet records in webhook payload
+	SessionID                string          `yaml:"session_id" json:"session_id"`             // Persistent session identifier for tracking/deduplication in SQLite
+	SinceID                  string          `yaml:"since_id" json:"since_id"`                 // Lower bound tweet ID filter
 	Notifications            notifier.Config `yaml:"notifications" json:"notifications"`
 }
 
@@ -147,6 +149,12 @@ func (c *Config) ApplyEnvOverrides() {
 	}
 	if val := os.Getenv("WEBHOOK_URL"); val != "" && c.Notifications.WebhookURL == "" {
 		c.Notifications.WebhookURL = val
+	}
+	if val := os.Getenv("SESSION_ID"); val != "" && c.SessionID == "" {
+		c.SessionID = val
+	}
+	if val := os.Getenv("SINCE_ID"); val != "" && c.SinceID == "" {
+		c.SinceID = val
 	}
 }
 

@@ -51,6 +51,8 @@ proxies: []              # Rotating proxy pool list, e.g. ["http://p1:8080", "so
 # Webhook Streaming & Notifications
 no_file: false           # Set to true to stream directly to your backend without saving files to disk
 webhook_data: false      # Include collected tweet records inside the webhook payload ("data" field)
+session_id: ""           # Persistent session ID stored in ~/.x-spider/sessions.db for tracking & deduplication
+since_id: ""             # Lower bound tweet ID filter
 notifications:
   discord_webhook_url: "" # e.g. "https://discord.com/api/webhooks/..."
   telegram_bot_token: ""  # e.g. "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"

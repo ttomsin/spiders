@@ -22,6 +22,7 @@ import (
 	"x-spider/internal/model"
 	"x-spider/internal/notifier"
 	"x-spider/internal/proxy"
+	"x-spider/internal/session"
 )
 
 const (
@@ -37,11 +38,21 @@ type Crawler struct {
 	cleaner         *cleaner.Cleaner
 	cpMgr           *checkpoint.Manager
 	notif           *notifier.Notifier
+	sessionStore    *session.Store
 	collectedTweets []model.TweetRow
 }
 
 // NewCrawler initializes a crawler instance with configuration
 func NewCrawler(cfg *config.Config) *Crawler {
+	var sStore *session.Store
+	if cfg.SessionID != "" {
+		if s, err := session.OpenStore(); err == nil {
+			sStore = s
+		} else {
+			fmt.Printf("Warning: failed to open sessions.db: %v\n", err)
+		}
+	}
+
 	return &Crawler{
 		cfg: cfg,
 		cleaner: cleaner.NewCleaner(cleaner.Options{
@@ -50,8 +61,9 @@ func NewCrawler(cfg *config.Config) *Crawler {
 			StripEmojis:   cfg.StripEmojis,
 			MinLength:     cfg.MinLength,
 		}),
-		cpMgr: checkpoint.NewManager(""),
-		notif: notifier.NewNotifier(cfg.Notifications),
+		cpMgr:        checkpoint.NewManager(""),
+		notif:        notifier.NewNotifier(cfg.Notifications),
+		sessionStore: sStore,
 	}
 }
 
@@ -91,6 +103,10 @@ func (c *Crawler) Run(ctx context.Context) error {
 		}
 	}
 	defer c.exporter.Close()
+
+	if c.sessionStore != nil {
+		defer c.sessionStore.Close()
+	}
 
 	// Check if date chunking is requested
 	if cfg.Chunk != "" && cfg.FromDate != "" && cfg.ToDate != "" {
@@ -261,6 +277,23 @@ func (c *Crawler) runSingleSession(ctx context.Context) (int, error) {
 			notFoundOnTab         bool
 		)
 
+		// Session Tracking & Deduplication from SQLite (~/.x-spider/sessions.db)
+		if c.sessionStore != nil && cfg.SessionID != "" {
+			sessionRec, err := c.sessionStore.GetOrCreateSession(cfg.SessionID, BuildSearchKeyword(cfg), cfg.SinceID)
+			if err == nil && sessionRec != nil {
+				if cfg.SinceID == "" && sessionRec.SinceID != "" {
+					cfg.SinceID = sessionRec.SinceID
+					fmt.Printf("%s\n", cyan("ℹ Active session '%s' loaded since_id: %s", cfg.SessionID, cfg.SinceID))
+				}
+				if historicalSeen, err := c.sessionStore.GetSeenTweetIDs(cfg.SessionID); err == nil && len(historicalSeen) > 0 {
+					for id := range historicalSeen {
+						seenTweetIDs[id] = true
+					}
+					fmt.Printf("%s\n", cyan("ℹ Active session '%s' loaded %d previously crawled tweets for deduplication", cfg.SessionID, len(historicalSeen)))
+				}
+			}
+		}
+
 		// Checkpoint Resume
 		if cfg.Resume && c.cpMgr.Exists() {
 			if st, err := c.cpMgr.Load(); err == nil && st.TotalSaved > 0 {
@@ -314,6 +347,11 @@ func (c *Crawler) runSingleSession(ctx context.Context) (int, error) {
 					}
 
 					if !seenTweetIDs[cleaned.IDStr] {
+						// Filter by SinceID if specified
+						if cfg.SinceID != "" && cleaned.IDStr <= cfg.SinceID {
+							continue
+						}
+
 						seenTweetIDs[cleaned.IDStr] = true
 						newRows = append(newRows, *cleaned)
 						lastTweetID = cleaned.IDStr
@@ -334,6 +372,15 @@ func (c *Crawler) runSingleSession(ctx context.Context) (int, error) {
 						totalSaved += len(newRows)
 						additionalTweetsCount += len(newRows)
 						c.collectedTweets = append(c.collectedTweets, newRows...)
+
+						// Record to SQLite SessionStore if session-id is active
+						if c.sessionStore != nil && cfg.SessionID != "" {
+							var ids []string
+							for _, nr := range newRows {
+								ids = append(ids, nr.IDStr)
+							}
+							_ = c.sessionStore.RecordTweets(cfg.SessionID, ids, lastTweetID)
+						}
 
 						// Save checkpoint if not in ephemeral mode
 						if !cfg.NoFile {
