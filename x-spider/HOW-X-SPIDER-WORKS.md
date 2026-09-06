@@ -123,9 +123,13 @@ x-spider/
 │   ├── prompt/                # Terminal interactive prompts
 │   │   └── prompt.go          # Interactive password mask, number input, format picker
 │   │
-│   └── proxy/                 # Rotating proxy pool manager
-│       ├── pool.go            # Thread-safe round-robin proxy rotation
-│       └── pool_test.go       # Proxy pool unit tests
+│   ├── proxy/                 # Rotating proxy pool manager
+│   │   ├── pool.go            # Thread-safe round-robin proxy rotation
+│   │   └── pool_test.go       # Proxy pool unit tests
+│   │
+│   └── session/               # Persistent SQLite session tracking & deduplication
+│       ├── session.go         # Sessions & seen-tweets database (~/.x-spider/sessions.db)
+│       └── session_test.go    # Session deduplication unit tests
 │
 ├── config.example.yaml        # Template configuration file
 ├── go.mod                     # Go 1.26 module definition
@@ -291,3 +295,35 @@ When collecting social media data for AI training (e.g. LLM fine-tuning, sentime
    - Use `x-spider gephi` to map out high-centrality users and extract structured discussion trees (Prompt -> Response -> Counter-argument).
 4. **Time Slicing for Volume**:
    Instead of requesting 10,000 tweets in one search, slice queries by week or month using `-f` and `--to` with `--tab LATEST`. This bypasses Twitter's pagination depth limits and collects comprehensive historical corpora.
+
+---
+
+## 8. Webhook Streaming Architecture (`internal/notifier`)
+
+For backend integrations, `x-spider` can stream crawled tweets directly over HTTP POST instead of creating files on disk:
+
+1. **No-File In-Memory Pipeline (`internal/exporter/memory.go`)**:
+   When `--no-file` is set, `Crawler` instantiates `MemoryExporter`. Rather than writing to filesystem disks, harvested tweets are accumulated in a thread-safe memory buffer.
+2. **Payload Dispatch**:
+   When the crawl finishes (or hits its limit), `Crawler.notifyResult()` checks if `WebhookIncludeData` is enabled (`--webhook-data`). If active, it populates the `"data"` field of the `Payload` struct with all collected `model.TweetRow` records and sends a JSON HTTP POST to `webhook_url`.
+3. **Multi-Channel Alerting**:
+   The notifier concurrently supports Discord Embeds, Telegram Bot messages, and Generic HTTP webhooks.
+
+---
+
+## 9. SQLite Session Tracking & Stateful Deduplication (`internal/session`)
+
+To make crawlers stateful without depending on external databases or local CSV files:
+
+1. **Storage Location**:
+   Stored permanently at `~/.x-spider/sessions.db` using pure-Go SQLite (`modernc.org/sqlite`, zero CGO).
+2. **Tables**:
+   - `sessions`: Tracks `session_id`, `query`, `since_id`, `total_count`, `created_at`, `updated_at`.
+   - `session_tweets`: Records `(session_id, tweet_id)` pairs with index lookup.
+3. **Deduplication Loop**:
+   - At the beginning of a crawl with `--session-id <id>`, all historically recorded tweet IDs are loaded into memory (`map[string]bool`).
+   - As new GraphQL JSON entries arrive, each tweet is checked against `seenTweetIDs`.
+   - If previously harvested in an earlier run of this session, the tweet is discarded immediately.
+   - Any new tweet is added to `session_tweets` in a batch transaction and its ID updates `since_id`.
+   - Result: Your backend can repeatedly trigger `x-spider` with the same `--session-id` and only receive **fresh, new tweets**.
+
