@@ -1,0 +1,67 @@
+# x-spider configuration file
+# Place this as config.yaml in the project directory or pass via --config / -c flag.
+
+# Twitter / X Authentication
+auth_token: "" # Primary auth_token cookie value (or leave empty if saved via 'x-spider auth set-token')
+
+# Optional Token Pool for Anti-Rate-Limit Account Rotation
+auth_tokens: []
+# - "auth_token_account_1"
+# - "auth_token_account_2"
+
+# Search Query Options
+search_keyword: "golang" # Keyword or search query
+thread_url: ""           # Or specify a tweet thread URL to crawl a discussion
+from_date: "01-01-2026"  # Optional start date (DD-MM-YYYY)
+to_date: "01-02-2026"    # Optional end date (DD-MM-YYYY)
+
+# Automated Date Chunker for Large Timeframes: monthly, weekly, daily (or leave empty)
+chunk: ""
+
+# Fault-Tolerant Crawl Recovery
+resume: false            # Resume from .xspider-checkpoint.json if interrupted
+
+# Search Tab: TOP or LATEST (defaults to TOP)
+search_tab: "TOP"
+
+# Crawl Limits and Rate Controls
+limit: 50                # Target number of tweets to collect
+delay_seconds: 3         # Delay between tweet batch requests (in seconds)
+delay_every_100_tweets: 10 # Delay after crawling 100 tweets (in seconds)
+
+# Export Settings
+export_format: "csv"     # csv, xlsx, json, jsonl, or sqlite
+csv_insert_mode: "REPLACE" # REPLACE or APPEND
+output_filename: ""      # Optional custom filename (without extension). Defaults to '<keyword> <timestamp>'
+folder_destination: "./tweets-data" # Output folder path
+
+# On-the-Fly NLP Pre-Cleaning (Great for AI/ML dataset curation)
+strip_urls: false        # Remove http:// and https:// URLs from tweets
+strip_mentions: false    # Remove @username tags from tweets
+strip_emojis: false      # Remove Unicode emojis and pictographs
+min_length: 0            # Discard tweets with clean character length below this threshold
+
+# Browser & Stealth Options
+headless: true           # Run browser in headless mode (true/false)
+debug: false             # Keep browser open on error for inspection
+enable_exponential_backoff: false # Use exponential backoff when hitting Twitter rate limits
+proxy: ""                # Single proxy, e.g. "http://127.0.0.1:8080"
+proxies: []              # Rotating proxy pool list, e.g. ["http://p1:8080", "socks5://p2:1080"]
+
+# Webhook Notifications (Alerts when crawl completes or fails)
+notifications:
+  discord_webhook_url: "" # e.g. "https://discord.com/api/webhooks/..."
+  telegram_bot_token: ""  # e.g. "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+  telegram_chat_id: ""    # e.g. "987654321"
+  webhook_url: ""         # Generic HTTP POST endpoint
+
+# Media Blocking to save bandwidth & speed up crawling
+blocked_extensions:
+  - ".jpg"
+  - ".jpeg"
+  - ".png"
+  - ".gif"
+  - ".webp"
+  - ".mp4"
+  - ".ts"
+  - "format=jpg"

@@ -1,0 +1,29 @@
+﻿# Binaries and build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Scraped data & checkpoints
+tweets-data/
+*.csv
+*.xlsx
+*.db
+*.sqlite
+*.checkpoint.json
+
+# IDEs and OS files
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Environment & credentials
+.env
+config.yaml
+!config.example.yaml
