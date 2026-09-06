@@ -7,24 +7,28 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"x-spider/internal/model"
 )
 
 // Config defines notification channels
 type Config struct {
-	DiscordWebhookURL string `yaml:"discord_webhook_url" json:"discord_webhook_url"`
-	TelegramBotToken  string `yaml:"telegram_bot_token" json:"telegram_bot_token"`
-	TelegramChatID    string `yaml:"telegram_chat_id" json:"telegram_chat_id"`
-	WebhookURL        string `yaml:"webhook_url" json:"webhook_url"`
+	DiscordWebhookURL  string `yaml:"discord_webhook_url" json:"discord_webhook_url"`
+	TelegramBotToken   string `yaml:"telegram_bot_token" json:"telegram_bot_token"`
+	TelegramChatID     string `yaml:"telegram_chat_id" json:"telegram_chat_id"`
+	WebhookURL         string `yaml:"webhook_url" json:"webhook_url"`
+	WebhookIncludeData bool   `yaml:"webhook_include_data" json:"webhook_include_data"`
 }
 
-// Payload represents the summary data sent upon crawl completion or error
+// Payload represents the summary and optional tweet records sent upon crawl completion or error
 type Payload struct {
-	Status      string `json:"status"` // "completed" or "error"
-	Query       string `json:"query"`
-	TweetsSaved int    `json:"tweets_saved"`
-	OutputFile  string `json:"output_file"`
-	Duration    string `json:"duration"`
-	Error       string `json:"error,omitempty"`
+	Status      string           `json:"status"` // "completed" or "error"
+	Query       string           `json:"query"`
+	TweetsSaved int              `json:"tweets_saved"`
+	OutputFile  string           `json:"output_file,omitempty"`
+	Duration    string           `json:"duration"`
+	Error       string           `json:"error,omitempty"`
+	Data        []model.TweetRow `json:"data,omitempty"`
 }
 
 // Notifier dispatches alerts across configured channels
@@ -48,6 +52,11 @@ func (n *Notifier) Enabled() bool {
 	return n.cfg.DiscordWebhookURL != "" ||
 		(n.cfg.TelegramBotToken != "" && n.cfg.TelegramChatID != "") ||
 		n.cfg.WebhookURL != ""
+}
+
+// IncludeData returns true if data array should be sent in the webhook payload
+func (n *Notifier) IncludeData() bool {
+	return n.cfg.WebhookIncludeData
 }
 
 // Notify broadcasts the crawl summary payload to all configured channels

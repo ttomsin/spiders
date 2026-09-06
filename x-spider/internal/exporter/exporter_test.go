@@ -238,4 +238,20 @@ func TestSQLiteExporter(t *testing.T) {
 	}
 }
 
+func TestMemoryExporter(t *testing.T) {
+	exp := NewMemoryExporter()
+	rows := []model.TweetRow{
+		{IDStr: "6001", Username: "mem_user", FullText: "Memory tweet"},
+	}
+	if err := exp.AppendRows(rows); err != nil {
+		t.Fatalf("failed to append rows to memory exporter: %v", err)
+	}
+	if len(exp.Rows()) != 1 {
+		t.Fatalf("expected 1 row in memory exporter, got %d", len(exp.Rows()))
+	}
+	if exp.GetFilePath() != "(in-memory / webhook stream)" {
+		t.Errorf("unexpected file path: %s", exp.GetFilePath())
+	}
+}
+
 

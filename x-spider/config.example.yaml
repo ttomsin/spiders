@@ -48,12 +48,15 @@ enable_exponential_backoff: false # Use exponential backoff when hitting Twitter
 proxy: ""                # Single proxy, e.g. "http://127.0.0.1:8080"
 proxies: []              # Rotating proxy pool list, e.g. ["http://p1:8080", "socks5://p2:1080"]
 
-# Webhook Notifications (Alerts when crawl completes or fails)
+# Webhook Streaming & Notifications
+no_file: false           # Set to true to stream directly to your backend without saving files to disk
+webhook_data: false      # Include collected tweet records inside the webhook payload ("data" field)
 notifications:
   discord_webhook_url: "" # e.g. "https://discord.com/api/webhooks/..."
   telegram_bot_token: ""  # e.g. "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
   telegram_chat_id: ""    # e.g. "987654321"
-  webhook_url: ""         # Generic HTTP POST endpoint
+  webhook_url: ""         # Generic HTTP POST endpoint (e.g. "https://your-backend.com/api/tweets")
+  webhook_include_data: false # Same as webhook_data
 
 # Media Blocking to save bandwidth & speed up crawling
 blocked_extensions:

@@ -31,12 +31,13 @@ const (
 
 // Crawler represents the Twitter scraping engine
 type Crawler struct {
-	cfg      *config.Config
-	browser  *rod.Browser
-	exporter exporter.Exporter
-	cleaner  *cleaner.Cleaner
-	cpMgr    *checkpoint.Manager
-	notif    *notifier.Notifier
+	cfg             *config.Config
+	browser         *rod.Browser
+	exporter        exporter.Exporter
+	cleaner         *cleaner.Cleaner
+	cpMgr           *checkpoint.Manager
+	notif           *notifier.Notifier
+	collectedTweets []model.TweetRow
 }
 
 // NewCrawler initializes a crawler instance with configuration
@@ -63,26 +64,31 @@ func (c *Crawler) Run(ctx context.Context) error {
 	green := color.New(color.FgGreen).SprintfFunc()
 	cyan := color.New(color.FgCyan).SprintfFunc()
 
-	targetFile, err := cfg.BuildTargetFilePath()
-	if err != nil {
-		return fmt.Errorf("failed to determine output path: %w", err)
-	}
+	if cfg.NoFile {
+		c.exporter = exporter.NewMemoryExporter()
+		fmt.Printf("%s\n", cyan("ℹ Running in no-file streaming mode (tweets will be dispatched via webhook)."))
+	} else {
+		targetFile, err := cfg.BuildTargetFilePath()
+		if err != nil {
+			return fmt.Errorf("failed to determine output path: %w", err)
+		}
 
-	// Initialize Exporter (CSV, Excel, JSON, JSONL, or SQLite)
-	switch cfg.ExportFormat {
-	case "xlsx":
-		c.exporter, err = exporter.NewExcelExporter(targetFile, cfg.CSVInsertMode)
-	case "json":
-		c.exporter, err = exporter.NewJSONExporter(targetFile, cfg.CSVInsertMode)
-	case "jsonl":
-		c.exporter, err = exporter.NewJSONLExporter(targetFile, cfg.CSVInsertMode)
-	case "sqlite":
-		c.exporter, err = exporter.NewSQLiteExporter(targetFile, cfg.CSVInsertMode)
-	default:
-		c.exporter, err = exporter.NewCSVExporter(targetFile, cfg.CSVInsertMode)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to initialize exporter: %w", err)
+		// Initialize Exporter (CSV, Excel, JSON, JSONL, or SQLite)
+		switch cfg.ExportFormat {
+		case "xlsx":
+			c.exporter, err = exporter.NewExcelExporter(targetFile, cfg.CSVInsertMode)
+		case "json":
+			c.exporter, err = exporter.NewJSONExporter(targetFile, cfg.CSVInsertMode)
+		case "jsonl":
+			c.exporter, err = exporter.NewJSONLExporter(targetFile, cfg.CSVInsertMode)
+		case "sqlite":
+			c.exporter, err = exporter.NewSQLiteExporter(targetFile, cfg.CSVInsertMode)
+		default:
+			c.exporter, err = exporter.NewCSVExporter(targetFile, cfg.CSVInsertMode)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to initialize exporter: %w", err)
+		}
 	}
 	defer c.exporter.Close()
 
@@ -134,6 +140,7 @@ func (c *Crawler) Run(ctx context.Context) error {
 func (c *Crawler) runSingleSession(ctx context.Context) (int, error) {
 	cfg := c.cfg
 	blue := color.New(color.FgBlue).SprintfFunc()
+	cyan := color.New(color.FgCyan).SprintfFunc()
 	yellow := color.New(color.FgYellow).SprintfFunc()
 	green := color.New(color.FgGreen).SprintfFunc()
 	red := color.New(color.FgRed).SprintfFunc()
@@ -326,18 +333,22 @@ func (c *Crawler) runSingleSession(ctx context.Context) (int, error) {
 					} else {
 						totalSaved += len(newRows)
 						additionalTweetsCount += len(newRows)
+						c.collectedTweets = append(c.collectedTweets, newRows...)
 
-						// Save checkpoint
-						_ = c.cpMgr.Save(checkpoint.State{
-							Query:        BuildSearchKeyword(cfg),
-							TargetFile:   c.exporter.GetFilePath(),
-							ExportFormat: cfg.ExportFormat,
-							LastTweetID:  lastTweetID,
-							TotalSaved:   totalSaved,
-							TargetLimit:  cfg.Limit,
-						})
-
-						fmt.Printf("\n\n%s\n", blue("Your tweets saved to: %s", c.exporter.GetFilePath()))
+						// Save checkpoint if not in ephemeral mode
+						if !cfg.NoFile {
+							_ = c.cpMgr.Save(checkpoint.State{
+								Query:        BuildSearchKeyword(cfg),
+								TargetFile:   c.exporter.GetFilePath(),
+								ExportFormat: cfg.ExportFormat,
+								LastTweetID:  lastTweetID,
+								TotalSaved:   totalSaved,
+								TargetLimit:  cfg.Limit,
+							})
+							fmt.Printf("\n\n%s\n", blue("Your tweets saved to: %s", c.exporter.GetFilePath()))
+						} else {
+							fmt.Printf("\n\n%s\n", cyan("Tweets collected in memory for webhook dispatch."))
+						}
 						fmt.Printf("%s\n", yellow("Total tweets saved: %d / %d", totalSaved, cfg.Limit))
 
 						if additionalTweetsCount > 100 {
@@ -423,17 +434,24 @@ func (c *Crawler) notifyResult(status string, count int, start time.Time, errMsg
 	}
 	durationStr := time.Since(start).Round(time.Second).String()
 	filePath := ""
-	if c.exporter != nil {
+	if c.exporter != nil && !c.cfg.NoFile {
 		filePath = c.exporter.GetFilePath()
 	}
-	_ = c.notif.Notify(notifier.Payload{
+
+	payload := notifier.Payload{
 		Status:      status,
 		Query:       c.cfg.SearchKeyword,
 		TweetsSaved: count,
 		OutputFile:  filePath,
 		Duration:    durationStr,
 		Error:       errMsg,
-	})
+	}
+
+	if c.notif.IncludeData() && len(c.collectedTweets) > 0 {
+		payload.Data = c.collectedTweets
+	}
+
+	_ = c.notif.Notify(payload)
 }
 
 func (c *Crawler) captureErrorScreenshot(page *rod.Page) {

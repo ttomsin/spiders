@@ -69,6 +69,8 @@ type Config struct {
 	StripMentions            bool            `yaml:"strip_mentions" json:"strip_mentions"`
 	StripEmojis              bool            `yaml:"strip_emojis" json:"strip_emojis"`
 	MinLength                int             `yaml:"min_length" json:"min_length"`
+	NoFile                   bool            `yaml:"no_file" json:"no_file"`                   // Stream/webhook only, skip saving to disk
+	WebhookData              bool            `yaml:"webhook_data" json:"webhook_data"`         // Include crawled tweet records in webhook payload
 	Notifications            notifier.Config `yaml:"notifications" json:"notifications"`
 }
 
@@ -133,10 +135,30 @@ func (c *Config) ApplyEnvOverrides() {
 	if val := os.Getenv("PROXY"); val != "" {
 		c.Proxy = val
 	}
+	if val := os.Getenv("NO_FILE"); val != "" {
+		if b, err := strconv.ParseBool(val); err == nil {
+			c.NoFile = b
+		}
+	}
+	if val := os.Getenv("WEBHOOK_DATA"); val != "" {
+		if b, err := strconv.ParseBool(val); err == nil {
+			c.WebhookData = b
+		}
+	}
+	if val := os.Getenv("WEBHOOK_URL"); val != "" && c.Notifications.WebhookURL == "" {
+		c.Notifications.WebhookURL = val
+	}
 }
 
 // Normalize validates and normalizes field values
 func (c *Config) Normalize() {
+	if c.WebhookData {
+		c.Notifications.WebhookIncludeData = true
+	}
+	if c.Notifications.WebhookIncludeData {
+		c.WebhookData = true
+	}
+
 	c.SearchTab = strings.ToUpper(strings.TrimSpace(c.SearchTab))
 	if c.SearchTab != "LATEST" && c.SearchTab != "TOP" {
 		c.SearchTab = "TOP"

@@ -344,6 +344,45 @@ To harvest high-quality Nigerian Pidgin datasets (as done in *NaijaSenti* and *A
 
 ---
 
+## Webhook Streaming & Direct Backend Ingestion
+
+You can stream crawled tweets directly to your backend API via HTTP POST without needing to store or manage local files:
+
+```bash
+# Stream tweets directly to your backend without saving files to disk
+.\x-spider.exe -s "machine learning" -l 100 --webhook-url "https://api.yourdomain.com/v1/tweets/ingest" --webhook-data --no-file
+```
+
+### Webhook JSON Payload Schema
+
+When `--webhook-data` (or `webhook_data: true`) is enabled, the HTTP POST payload sent to your endpoint contains:
+
+```json
+{
+  "status": "completed",
+  "query": "machine learning",
+  "tweets_saved": 100,
+  "duration": "45s",
+  "data": [
+    {
+      "id_str": "189674829102938475",
+      "conversation_id_str": "189674829102938475",
+      "username": "karpathy",
+      "full_text": "Recent progress in reinforcement learning...",
+      "created_at": "2026-09-06T14:30:00.000Z",
+      "reply_count": 54,
+      "retweet_count": 312,
+      "favorite_count": 2180,
+      "lang": "en",
+      "tweet_url": "https://x.com/karpathy/status/189674829102938475",
+      "location": "San Francisco, CA"
+    }
+  ]
+}
+```
+
+---
+
 ## Gephi Network Conversion
 
 Convert reply threads from your scraped data into a source-to-target edge list:

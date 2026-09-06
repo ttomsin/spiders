@@ -224,6 +224,12 @@ func mergeConfig(source *config.Config, target *config.Config) {
 	if source.Notifications.DiscordWebhookURL != "" || source.Notifications.TelegramBotToken != "" || source.Notifications.WebhookURL != "" {
 		target.Notifications = source.Notifications
 	}
+	if source.NoFile {
+		target.NoFile = true
+	}
+	if source.WebhookData {
+		target.WebhookData = true
+	}
 }
 
 func init() {
@@ -248,4 +254,7 @@ func init() {
 	RootCmd.Flags().BoolVar(&cfg.StripMentions, "strip-mentions", false, "Remove @mentions from tweet text")
 	RootCmd.Flags().BoolVar(&cfg.StripEmojis, "strip-emojis", false, "Remove Unicode emojis from tweet text")
 	RootCmd.Flags().IntVar(&cfg.MinLength, "min-length", 0, "Discard tweets shorter than minimum character length")
+	RootCmd.Flags().StringVar(&cfg.Notifications.WebhookURL, "webhook-url", "", "Custom HTTP webhook endpoint to receive crawl events")
+	RootCmd.Flags().BoolVar(&cfg.WebhookData, "webhook-data", false, "Include crawled tweet data records in webhook payload")
+	RootCmd.Flags().BoolVar(&cfg.NoFile, "no-file", false, "Stream directly to webhook without saving files locally")
 }

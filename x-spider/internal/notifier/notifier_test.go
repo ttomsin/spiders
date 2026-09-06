@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"x-spider/internal/model"
 )
 
 func TestNotifierGenericWebhook(t *testing.T) {
@@ -29,6 +31,9 @@ func TestNotifierGenericWebhook(t *testing.T) {
 		TweetsSaved: 100,
 		OutputFile:  "tweets-data/test.csv",
 		Duration:    "1m30s",
+		Data: []model.TweetRow{
+			{IDStr: "999", Username: "webhook_user", FullText: "Webhook tweet"},
+		},
 	}
 
 	if err := n.Notify(payload); err != nil {
@@ -37,5 +42,8 @@ func TestNotifierGenericWebhook(t *testing.T) {
 
 	if receivedPayload.Query != "golang test" || receivedPayload.TweetsSaved != 100 {
 		t.Errorf("unexpected received payload: %+v", receivedPayload)
+	}
+	if len(receivedPayload.Data) != 1 || receivedPayload.Data[0].Username != "webhook_user" {
+		t.Errorf("unexpected received data in payload: %+v", receivedPayload.Data)
 	}
 }
