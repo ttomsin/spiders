@@ -105,6 +105,9 @@ var promptCmd = &cobra.Command{
 		case res := <-respCh:
 			responseText = res
 			_, convID = itc.GetLastResponse()
+			if convID == "" {
+				convID = conversation.GetCurrentConversationID(page)
+			}
 		case <-time.After(60 * time.Second):
 			return fmt.Errorf("response timeout: ChatGPT took longer than 60s to finish responding")
 		}
@@ -112,6 +115,10 @@ var promptCmd = &cobra.Command{
 		fmt.Printf("%s\n\n", green("━━━ ChatGPT Response ━━━"))
 		fmt.Println(responseText)
 		fmt.Printf("\n%s\n", green("━━━━━━━━━━━━━━━━━━━━━━━━"))
+		if convID != "" {
+			dim := color.New(color.FgHiBlack).SprintfFunc()
+			fmt.Printf("%s\n", dim("Session ID: %s (use --chat-session-id %s to continue)", convID, convID))
+		}
 
 		turns := []exporter.Turn{
 			{

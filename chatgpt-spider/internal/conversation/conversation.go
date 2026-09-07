@@ -171,3 +171,21 @@ func OpenConversation(page *rod.Page, sessionIDOrURL string) error {
 	time.Sleep(3 * time.Second)
 	return nil
 }
+
+// GetCurrentConversationID extracts the active conversation ID from the page URL
+func GetCurrentConversationID(page *rod.Page) string {
+	info, err := page.Info()
+	if err != nil || info == nil {
+		return ""
+	}
+	urlStr := info.URL
+	if strings.Contains(urlStr, "/c/") {
+		parts := strings.Split(urlStr, "/c/")
+		if len(parts) >= 2 {
+			id := strings.Split(parts[1], "?")[0]
+			id = strings.Split(id, "#")[0]
+			return strings.TrimSpace(id)
+		}
+	}
+	return ""
+}

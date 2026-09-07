@@ -132,6 +132,9 @@ var chatCmd = &cobra.Command{
 			case res := <-respCh:
 				responseText = res
 				_, convID = itc.GetLastResponse()
+				if convID == "" {
+					convID = conversation.GetCurrentConversationID(page)
+				}
 			case <-time.After(60 * time.Second):
 				fmt.Printf("%s\n", color.RedString("Response timeout: took longer than 60s"))
 				continue
@@ -139,6 +142,9 @@ var chatCmd = &cobra.Command{
 
 			fmt.Printf("\r%s\n\n", green("ChatGPT >"))
 			fmt.Println(responseText)
+			if convID != "" {
+				fmt.Printf("\n%s\n", dim("[chat-session-id: %s]", convID))
+			}
 
 			turns = append(turns, exporter.Turn{
 				Prompt:         input,
