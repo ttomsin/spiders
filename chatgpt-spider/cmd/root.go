@@ -18,6 +18,7 @@ var (
 	sessionToken  string
 	webhookURL    string
 	outputFile    string
+	formatSpec    string
 )
 
 const AppVersion = "1.0.0"
@@ -87,6 +88,7 @@ func init() {
 	RootCmd.PersistentFlags().StringVarP(&sessionToken, "session-token", "t", "", "ChatGPT __Secure-next-auth.session-token cookie")
 	RootCmd.PersistentFlags().StringVar(&webhookURL, "webhook-url", "", "Custom HTTP webhook endpoint to dispatch conversation turns")
 	RootCmd.PersistentFlags().StringVarP(&outputFile, "output", "o", "", "Destination output file (.md or .json)")
+	RootCmd.PersistentFlags().StringVarP(&formatSpec, "format", "f", "", "Enforce response format (e.g. json, csv, xml, or custom schema)")
 }
 
 func Execute() {

@@ -78,6 +78,7 @@ var batchCmd = &cobra.Command{
 
 			resp, err := eng.Prompt(cmd.Context(), spider.PromptRequest{
 				Prompt: promptText,
+				Format: formatSpec,
 			})
 			if err != nil {
 				fmt.Printf("%s\n", color.RedString("Error: %v", err))

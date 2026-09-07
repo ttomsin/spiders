@@ -21,12 +21,18 @@ type ChatCompletionMessage struct {
 	Content string `json:"content"`
 }
 
+type ResponseFormat struct {
+	Type string `json:"type,omitempty"` // e.g. "json_object"
+}
+
 // ChatCompletionRequest is the OpenAI-standard request body
 type ChatCompletionRequest struct {
 	Model          string                  `json:"model"`
 	Messages       []ChatCompletionMessage `json:"messages"`
 	Stream         bool                    `json:"stream"`
 	ConversationID string                  `json:"conversation_id,omitempty"`
+	Format         string                  `json:"format,omitempty"`
+	ResponseFormat *ResponseFormat         `json:"response_format,omitempty"`
 }
 
 // ChatCompletionChoice is part of the non-streaming response
@@ -160,6 +166,15 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		convID = r.Header.Get("X-Conversation-ID")
 	}
 
+	formatConstraint := req.Format
+	if formatConstraint == "" && req.ResponseFormat != nil {
+		if req.ResponseFormat.Type == "json_object" {
+			formatConstraint = "json"
+		} else if req.ResponseFormat.Type != "" {
+			formatConstraint = req.ResponseFormat.Type
+		}
+	}
+
 	// Handle Streaming SSE response
 	if req.Stream {
 		flusher, ok := w.(http.Flusher)
@@ -198,6 +213,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		resp, err := s.engine.Prompt(r.Context(), spider.PromptRequest{
 			Prompt:         promptText,
 			ConversationID: convID,
+			Format:         formatConstraint,
 			OnToken: func(delta string) {
 				currentConvID := convID
 				if currentConvID == "" {
@@ -258,6 +274,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	resp, err := s.engine.Prompt(r.Context(), spider.PromptRequest{
 		Prompt:         promptText,
 		ConversationID: convID,
+		Format:         formatConstraint,
 	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), http.StatusInternalServerError)

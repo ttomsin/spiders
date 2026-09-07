@@ -11,6 +11,7 @@ import (
 
 	"chatgpt-spider/internal/browser"
 	"chatgpt-spider/internal/conversation"
+	"chatgpt-spider/internal/format"
 )
 
 // Options holds initialization options for the spider engine
@@ -24,8 +25,10 @@ type Options struct {
 // PromptRequest defines a request to ChatGPT
 type PromptRequest struct {
 	Prompt         string
+	FileContent    string // Optional large text/file attachment
 	ConversationID string
 	NewChat        bool
+	Format         string // e.g. "json", "csv", "xml", or custom schema
 	OnToken        func(delta string)
 	Timeout        time.Duration // Optional custom generation timeout (defaults to 5 minutes)
 }
@@ -112,7 +115,12 @@ func (e *Engine) Prompt(ctx context.Context, req PromptRequest) (*PromptResponse
 	// Count assistant messages in DOM before dispatching prompt
 	initialCount := conversation.CountAssistantMessages(page)
 
-	if err := conversation.SendPrompt(ctx, page, req.Prompt); err != nil {
+	effectivePrompt := req.Prompt
+	if req.Format != "" {
+		effectivePrompt = format.ApplyFormatConstraint(req.Prompt, req.Format)
+	}
+
+	if err := conversation.SendPrompt(ctx, page, effectivePrompt, req.FileContent); err != nil {
 		return nil, fmt.Errorf("error sending prompt: %w", err)
 	}
 

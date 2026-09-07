@@ -119,7 +119,8 @@ var chatCmd = &cobra.Command{
 			fmt.Printf("\n%s ", green("ChatGPT >"))
 
 			resp, err := eng.Prompt(cmd.Context(), spider.PromptRequest{
-				Prompt: input,
+				Prompt:  input,
+				Format:  formatSpec,
 				OnToken: func(token string) {
 					fmt.Print(token)
 				},

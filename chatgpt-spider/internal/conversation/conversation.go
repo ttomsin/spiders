@@ -79,8 +79,8 @@ func getEnabledSendButton(page *rod.Page) *rod.Element {
 	return nil
 }
 
-// SendPrompt enters the prompt into ChatGPT and triggers transmission
-func SendPrompt(ctx context.Context, page *rod.Page, promptText string) error {
+// SendPrompt enters the prompt (and optional attachment text) into ChatGPT and triggers transmission
+func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachmentText string) error {
 	selectors := []string{
 		"#prompt-textarea",
 		"div[contenteditable='true']",
@@ -106,24 +106,44 @@ func SendPrompt(ctx context.Context, page *rod.Page, promptText string) error {
 	// Focus
 	_ = inputElem.Focus()
 
-	isEditable, _ := inputElem.Attribute("contenteditable")
-	if isEditable != nil && *isEditable == "true" {
-		escaped := strings.ReplaceAll(promptText, `\`, `\\`)
-		escaped = strings.ReplaceAll(escaped, "`", "\\`")
-		escaped = strings.ReplaceAll(escaped, "$", "\\$")
-		js := fmt.Sprintf(`() => {
+	// 1. If an attachment is provided, paste it first so ChatGPT creates the document pill card
+	if attachmentText != "" {
+		pasteJS := `(text) => {
 			this.focus();
-			document.execCommand('insertText', false, %q);
-		}`, escaped)
-		if _, jsErr := inputElem.Eval(js); jsErr != nil {
-			_ = inputElem.Input(promptText)
-		}
-	} else {
-		_ = inputElem.SelectAllText()
-		_ = inputElem.Input(promptText)
+			const dt = new DataTransfer();
+			dt.setData('text/plain', text);
+			const pasteEvt = new ClipboardEvent('paste', {
+				bubbles: true,
+				cancelable: true,
+				clipboardData: dt
+			});
+			this.dispatchEvent(pasteEvt);
+		}`
+		_, _ = inputElem.Eval(pasteJS, attachmentText)
+		// Give ChatGPT time to convert to document pill card
+		time.Sleep(600 * time.Millisecond)
 	}
 
-	// Give ChatGPT event handlers time to capture the paste and mount any document/attachment cards
+	// 2. Now insert the user prompt text (e.g. "look into this" or analysis instruction) into the textarea
+	if promptText != "" {
+		_ = inputElem.Focus()
+		isEditable, _ := inputElem.Attribute("contenteditable")
+		if isEditable != nil && *isEditable == "true" {
+			insertJS := `(text) => {
+				this.focus();
+				document.execCommand('insertText', false, text);
+			}`
+			if _, jsErr := inputElem.Eval(insertJS, promptText); jsErr != nil {
+				_ = inputElem.Input(promptText)
+			}
+		} else {
+			_ = inputElem.Input(promptText)
+		}
+	} else if attachmentText == "" {
+		return fmt.Errorf("empty prompt")
+	}
+
+	// Give ChatGPT event handlers time to capture input and update UI state
 	time.Sleep(400 * time.Millisecond)
 
 	// Dynamically wait for any active uploads/conversions to finish
@@ -229,10 +249,17 @@ func StreamCompletion(ctx context.Context, page *rod.Page, initialCount int, max
 		default:
 		}
 
-		stopBtn, _ := page.Timeout(100 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
+		var isGenerating bool
+		stopBtn, _ := page.Timeout(50 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
 		if stopBtn != nil {
-			hasSeenStreaming = true
+			if vis, _ := stopBtn.Visible(); vis {
+				isGenerating = true
+				hasSeenStreaming = true
+			}
 		}
+
+		// Also check if Send button has reappeared (meaning generation is definitely done)
+		sendBtn := getEnabledSendButton(page)
 
 		assistantMsgs := getAssistantElements(page)
 		if len(assistantMsgs) > initialCount {
@@ -255,12 +282,16 @@ func StreamCompletion(ctx context.Context, page *rod.Page, initialCount int, max
 					unchangedCount = 0
 				} else if text == lastObservedText {
 					unchangedCount++
-					// If we observed streaming and the stop button disappeared, finish after 2 unchanged polls (~250ms)
-					if hasSeenStreaming && stopBtn == nil && unchangedCount >= 2 {
+					// If send button has reappeared and text has stabilized, generation is finished
+					if sendBtn != nil && unchangedCount >= 2 {
 						return strings.TrimSpace(lastObservedText), nil
 					}
-					// If no stop button is active and text has stabilized for 6 polls (~750ms), finish
-					if stopBtn == nil && unchangedCount >= 6 {
+					// If we observed streaming and the stop button is no longer visible, finish
+					if hasSeenStreaming && !isGenerating && unchangedCount >= 2 {
+						return strings.TrimSpace(lastObservedText), nil
+					}
+					// Fallback: if not generating and text has stabilized for 6 polls (~720ms)
+					if !isGenerating && unchangedCount >= 6 {
 						return strings.TrimSpace(lastObservedText), nil
 					}
 				}

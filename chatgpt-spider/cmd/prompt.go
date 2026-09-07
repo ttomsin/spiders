@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/fatih/color"
@@ -10,22 +11,40 @@ import (
 	"chatgpt-spider/internal/spider"
 )
 
+var promptFile string
+
 var promptCmd = &cobra.Command{
 	Use:   "prompt [text]",
 	Short: "Send a single prompt to ChatGPT and retrieve the response (or fetch history with --history)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 && !history {
-			return fmt.Errorf("prompt text is required (or pass --history to inspect a thread)")
+		promptText := strings.Join(args, " ")
+		var fileContent string
+
+		if promptFile != "" {
+			fileBytes, err := os.ReadFile(promptFile)
+			if err != nil {
+				return fmt.Errorf("failed to read file %s: %w", promptFile, err)
+			}
+			fileContent = strings.TrimSpace(string(fileBytes))
 		}
 
-		promptText := strings.Join(args, " ")
+		if len(strings.TrimSpace(promptText)) == 0 && len(fileContent) == 0 && !history {
+			return fmt.Errorf("prompt text or --file is required (or pass --history to inspect a thread)")
+		}
 
 		cyan := color.New(color.FgCyan).SprintfFunc()
 		green := color.New(color.FgGreen).SprintfFunc()
 		yellow := color.New(color.FgYellow).SprintfFunc()
 
 		if promptText != "" {
-			fmt.Printf("%s: %s\n", cyan("Prompt"), promptText)
+			displayPrompt := promptText
+			if len(displayPrompt) > 120 {
+				displayPrompt = displayPrompt[:120] + "... [truncated]"
+			}
+			fmt.Printf("%s: %s\n", cyan("Prompt"), displayPrompt)
+		}
+		if fileContent != "" {
+			fmt.Printf("%s: %s (%d bytes)\n", cyan("Attachment"), promptFile, len(fileContent))
 		}
 		fmt.Printf("%s\n", yellow("Launching browser..."))
 
@@ -78,7 +97,9 @@ var promptCmd = &cobra.Command{
 		fmt.Printf("%s\n\n", green("━━━ ChatGPT Response ━━━"))
 
 		resp, err := eng.Prompt(cmd.Context(), spider.PromptRequest{
-			Prompt: promptText,
+			Prompt:      promptText,
+			FileContent: fileContent,
+			Format:      formatSpec,
 			OnToken: func(token string) {
 				fmt.Print(token)
 			},
@@ -121,5 +142,6 @@ var promptCmd = &cobra.Command{
 }
 
 func init() {
+	promptCmd.Flags().StringVarP(&promptFile, "file", "F", "", "Path to a file whose contents should be sent as part of the prompt")
 	RootCmd.AddCommand(promptCmd)
 }
