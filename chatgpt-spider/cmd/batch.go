@@ -9,10 +9,8 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"chatgpt-spider/internal/browser"
-	"chatgpt-spider/internal/conversation"
 	"chatgpt-spider/internal/exporter"
-	"chatgpt-spider/internal/interceptor"
+	"chatgpt-spider/internal/spider"
 )
 
 var (
@@ -54,7 +52,7 @@ var batchCmd = &cobra.Command{
 		fmt.Printf("%s\n", cyan("Loaded %d prompts from %s", len(prompts), inputFile))
 		fmt.Printf("%s\n", yellow("Launching browser..."))
 
-		inst, err := browser.Launch(browser.Options{
+		eng, err := spider.NewEngine(spider.Options{
 			Headless:     headless,
 			Anonymous:    anon,
 			SessionToken: sessionToken,
@@ -63,26 +61,14 @@ var batchCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer inst.Close()
-
-		page := inst.Page
-		itc, err := interceptor.NewInterceptor(page)
-		if err != nil {
-			return fmt.Errorf("failed to setup interceptor: %w", err)
-		}
-		defer itc.Stop()
+		defer eng.Close()
 
 		if chatSessionID != "" {
 			fmt.Printf("%s\n", yellow("Resuming conversation: %s...", chatSessionID))
-			if err := conversation.OpenConversation(page, chatSessionID); err != nil {
-				return err
-			}
-		} else {
-			if err := page.Navigate("https://chatgpt.com"); err != nil {
-				return err
-			}
-			_ = page.WaitLoad()
-			time.Sleep(3 * time.Second)
+		}
+
+		if err := eng.Initialize(chatSessionID); err != nil {
+			return err
 		}
 
 		var turns []exporter.Turn
@@ -90,54 +76,21 @@ var batchCmd = &cobra.Command{
 		for i, promptText := range prompts {
 			fmt.Printf("\n%s\n", cyan("━━━ Processing [%d/%d]: %s ━━━", i+1, len(prompts), promptText))
 
-			// Drain any stale buffered response before sending new prompt
-			itc.Drain()
-
-			if err := conversation.SendPrompt(page, promptText); err != nil {
-				fmt.Printf("%s\n", color.RedString("Error sending prompt: %v", err))
+			resp, err := eng.Prompt(cmd.Context(), spider.PromptRequest{
+				Prompt: promptText,
+			})
+			if err != nil {
+				fmt.Printf("%s\n", color.RedString("Error: %v", err))
 				continue
 			}
 
-			var responseText string
-			var convID string
-
-			respCh := make(chan string, 1)
-			go func() {
-				select {
-				case resp := <-itc.ResponseChannel():
-					select {
-					case respCh <- resp:
-					default:
-					}
-				case <-time.After(60 * time.Second):
-				}
-			}()
-
-			go func() {
-				if domText, err := conversation.WaitForCompletion(page, 45*time.Second); err == nil && domText != "" {
-					select {
-					case respCh <- domText:
-					default:
-					}
-				}
-			}()
-
-			select {
-			case res := <-respCh:
-				responseText = res
-				_, convID = itc.GetLastResponse()
-			case <-time.After(60 * time.Second):
-				fmt.Printf("%s\n", color.RedString("Timeout waiting for response"))
-				continue
-			}
-
-			fmt.Printf("%s\n", green("Response captured (%d characters)", len(responseText)))
+			fmt.Printf("%s\n", green("Response captured (%d characters)", len(resp.Text)))
 
 			turn := exporter.Turn{
 				Prompt:         promptText,
-				Response:       responseText,
-				ConversationID: convID,
-				Timestamp:      time.Now().UTC().Format(time.RFC3339),
+				Response:       resp.Text,
+				ConversationID: resp.ConversationID,
+				Timestamp:      resp.Timestamp,
 			}
 			turns = append(turns, turn)
 

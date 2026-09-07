@@ -77,15 +77,15 @@ func SendPrompt(page *rod.Page, promptText string) error {
 	return page.KeyActions().Press(input.Enter).Do()
 }
 
-// WaitForCompletion polls the DOM to detect when response generation finishes and returns immediately
-func WaitForCompletion(page *rod.Page, maxWait time.Duration) (string, error) {
+// StreamCompletion polls the DOM and invokes onDelta with each newly rendered token chunk
+func StreamCompletion(page *rod.Page, maxWait time.Duration, onDelta func(delta string)) (string, error) {
 	deadline := time.Now().Add(maxWait)
 
 	var lastObservedText string
 	unchangedCount := 0
 	hasSeenStreaming := false
 
-	// First wait up to 5 seconds for streaming to actually begin or first tokens to render
+	// Wait up to 5 seconds for streaming indicator or first tokens
 	initDeadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(initDeadline) {
 		stopBtn, _ := page.Timeout(200 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
@@ -93,43 +93,49 @@ func WaitForCompletion(page *rod.Page, maxWait time.Duration) (string, error) {
 			hasSeenStreaming = true
 			break
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 	}
 
 	for time.Now().Before(deadline) {
-		stopBtn, _ := page.Timeout(200 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
+		stopBtn, _ := page.Timeout(150 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
 		if stopBtn != nil {
 			hasSeenStreaming = true
 		}
 
-		// Find assistant response elements - always inspect the LAST assistant message on the page
 		assistantMsgs, err := page.Elements("article [data-message-author-role='assistant'], div[data-message-author-role='assistant'], .markdown")
 		if err == nil && len(assistantMsgs) > 0 {
 			lastElem := assistantMsgs[len(assistantMsgs)-1]
 			text, _ := lastElem.Text()
-			trimmed := strings.TrimSpace(text)
-			if trimmed != "" {
-				if trimmed == lastObservedText {
-					unchangedCount++
-					// If streaming stopped (no stop button) and content has been stable for at least 1.5s
-					if (hasSeenStreaming && stopBtn == nil && unchangedCount >= 3) || unchangedCount >= 6 {
-						return trimmed, nil
+			if text != "" {
+				if len(text) > len(lastObservedText) {
+					delta := text[len(lastObservedText):]
+					if onDelta != nil && delta != "" {
+						onDelta(delta)
 					}
-				} else {
-					lastObservedText = trimmed
+					lastObservedText = text
 					unchangedCount = 0
+				} else if text == lastObservedText {
+					unchangedCount++
+					if (hasSeenStreaming && stopBtn == nil && unchangedCount >= 3) || unchangedCount >= 6 {
+						return strings.TrimSpace(lastObservedText), nil
+					}
 				}
 			}
 		}
 
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(120 * time.Millisecond)
 	}
 
 	if lastObservedText != "" {
-		return lastObservedText, nil
+		return strings.TrimSpace(lastObservedText), nil
 	}
 
 	return "", fmt.Errorf("timeout waiting for response")
+}
+
+// WaitForCompletion polls the DOM to detect when response generation finishes and returns immediately
+func WaitForCompletion(page *rod.Page, maxWait time.Duration) (string, error) {
+	return StreamCompletion(page, maxWait, nil)
 }
 
 // NewChat triggers a fresh conversation tab
@@ -197,4 +203,43 @@ func GetCurrentConversationID(page *rod.Page) string {
 		}
 	}
 	return ""
+}
+
+// ConversationTurn represents a single user or assistant exchange in the conversation
+type ConversationTurn struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// GetConversationHistory extracts the visible message turns of the currently loaded conversation
+func GetConversationHistory(page *rod.Page) ([]ConversationTurn, error) {
+	var turns []ConversationTurn
+
+	articles, err := page.Elements("article")
+	if err != nil || len(articles) == 0 {
+		return turns, nil
+	}
+
+	for _, art := range articles {
+		role := "user"
+		roleAttr, _ := art.Attribute("data-message-author-role")
+		if roleAttr != nil && *roleAttr != "" {
+			role = *roleAttr
+		} else {
+			if asst, _ := art.Element("[data-message-author-role='assistant']"); asst != nil {
+				role = "assistant"
+			}
+		}
+
+		text, _ := art.Text()
+		trimmed := strings.TrimSpace(text)
+		if trimmed != "" {
+			turns = append(turns, ConversationTurn{
+				Role:    role,
+				Content: trimmed,
+			})
+		}
+	}
+
+	return turns, nil
 }

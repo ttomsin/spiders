@@ -7,8 +7,10 @@
 ## Key Features
 
 - 🚀 **Zero External Drivers**: No `chromedriver.exe` needed. Built on native CDP (`go-rod` + `stealth`).
-- 🤖 **Headless by Default**: Fast, silent execution in the background without browser windows popping up. View the browser anytime with `--headless=false`.
-- 📡 **Direct Network Stream Capture**: Intercepts `POST /backend-api/conversation` SSE JSON streams straight from the wire, extracting clean Markdown and text without relying on fragile React DOM classes.
+- ⚡ **Real-Time Token Streaming**: Live typewriter effect in your terminal as tokens arrive.
+- 🤖 **Headless by Default**: Fast, silent execution in the background without browser windows popping up.
+- 🌐 **OpenAI-Compatible REST Server**: Exposes standard `POST /v1/chat/completions` so you can connect Cursor, LangChain, or your custom backends directly.
+- 📜 **In-Conversation History**: Extract conversation turn history with `--history` or `/history`.
 - 🔐 **Persistent Profiles or Pure Anonymous**: User profiles are preserved in `~/.chatgpt-spider/profile` so you log in once. Want unauthenticated public guest mode? Just pass `--anon`!
 - 🆕 **New Chat Sessions**: Start a fresh thread with `--new-chat` or by typing `/new` inside interactive chat.
 - 🔑 **Encrypted Session Token Storage**: Securely store your `__Secure-next-auth.session-token` (and chunked `.0`, `.1`) with AES-256 GCM using `chatgpt-spider auth set-token`.
@@ -59,38 +61,48 @@ Chrome will open to ChatGPT. Complete your login once, and your session is saved
 
 ## Usage Examples
 
-### Single Prompt (Headless by Default)
+### 1. Live Terminal Chat (Typewriter Effect)
+```powershell
+.\chatgpt-spider.exe chat "hey whats up"
+```
+*(In chat mode, type `/history` to see previous turns, `/new` to start fresh, `/open <id>` to switch conversation threads, or `exit` to quit).*
+
+### 2. Single Prompt (Headless by Default)
 ```powershell
 .\chatgpt-spider.exe prompt "Explain goroutines in Go" -o response.md
 ```
 
-### Single Prompt in Anonymous Guest Mode
+### 3. Fetch In-Conversation History
+To read the conversation history of a specific session thread without sending a new message:
 ```powershell
-.\chatgpt-spider.exe prompt "Write a haiku about clouds" --anon
+.\chatgpt-spider.exe prompt --chat-session-id "6a9edbf9-fffc-83e9-8216-4fb3e4e38f49" --history
 ```
 
-### Start a Fresh Chat Thread
-```powershell
-.\chatgpt-spider.exe prompt "Start a fresh topic on architecture" --new-chat
-```
-
-### Resume an Existing Conversation Thread
+### 4. Resume an Existing Conversation Thread
 You can continue an existing conversation by passing its UUID or full URL:
 ```powershell
 .\chatgpt-spider.exe prompt "Can you explain that last point further?" --chat-session-id "67c9b2e1-4567-89ab-cdef-0123456789ab"
 ```
-Or with full URL:
+
+### 5. OpenAI-Compatible REST API Server
+Start the local server:
 ```powershell
-.\chatgpt-spider.exe prompt "Continue where we left off" --chat-session-id "https://chatgpt.com/c/67c9b2e1-4567-89ab-cdef-0123456789ab"
+.\chatgpt-spider.exe serve --port 8080
+```
+Then use it with standard `curl` or any OpenAI client:
+```powershell
+curl http://localhost:8080/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  -d '{"messages": [{"role": "user", "content": "Explain binary search in 1 sentence"}]}'
+```
+Or with live SSE streaming:
+```powershell
+curl -N http://localhost:8080/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  -d '{"stream": true, "messages": [{"role": "user", "content": "Write a short poem"}]}'
 ```
 
-### Interactive Terminal Chat
-```powershell
-.\chatgpt-spider.exe chat -o conversation.json
-```
-*(In chat mode, type `/new` to start fresh, `/open <id>` to switch conversation threads, or `exit` to quit).*
-
-### Batch Prompt File Execution
+### 6. Batch Prompt File Execution
 Given a `prompts.txt`:
 ```text
 Write a haiku about computers
@@ -103,11 +115,6 @@ Execute them in sequence:
 .\chatgpt-spider.exe batch -i prompts.txt -o results.json -d 3
 ```
 
-### Stream Conversations to Your Backend API
-```powershell
-.\chatgpt-spider.exe prompt "Explain transformer attention mechanisms" --webhook-url "https://api.yourdomain.com/v1/chatgpt/ingest"
-```
-
 ---
 
 ## Command Line Reference
@@ -115,7 +122,9 @@ Execute them in sequence:
 ```text
 Flags:
       --anon                   Run in anonymous / guest mode without using saved credentials or profile
+      --chat-session-id string Resume a specific existing conversation by ID or URL (e.g., 67c9b2e1-...)
       --headless               Run browser in headless mode (default true, set --headless=false to view browser)
+      --history                Fetch and display the message history of the conversation
       --new-chat               Start a fresh conversation thread before sending prompt
       --debug                  Keep browser inspector / devtools open
   -t, --session-token string   ChatGPT __Secure-next-auth.session-token cookie
@@ -124,8 +133,9 @@ Flags:
 ```
 
 ### Subcommands
-- `prompt <text>`: Send a single prompt and retrieve the response.
-- `chat`: Open an interactive chat REPL in the terminal (`/new` starts fresh thread).
+- `prompt [text]`: Send a single prompt or view history with `--history`.
+- `chat`: Open an interactive chat REPL in the terminal (`/history`, `/new`, `/open`).
+- `serve`: Start an OpenAI-compatible REST server (`--port 8080`).
 - `batch -i <file>`: Process a text file of prompts sequentially.
 - `auth [set-token|status|clear]`: Manage encrypted session tokens.
 

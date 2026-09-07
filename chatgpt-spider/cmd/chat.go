@@ -4,17 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"chatgpt-spider/internal/browser"
-	"chatgpt-spider/internal/conversation"
 	"chatgpt-spider/internal/exporter"
-	"chatgpt-spider/internal/interceptor"
+	"chatgpt-spider/internal/spider"
 )
 
 var chatCmd = &cobra.Command{
@@ -29,7 +24,7 @@ var chatCmd = &cobra.Command{
 		fmt.Println(cyan("Starting interactive ChatGPT session..."))
 		fmt.Println(dim("Commands: '/new' to start new, '/open <id>' to switch conversation, 'exit' to quit.\n"))
 
-		inst, err := browser.Launch(browser.Options{
+		eng, err := spider.NewEngine(spider.Options{
 			Headless:     headless,
 			Anonymous:    anon,
 			SessionToken: sessionToken,
@@ -38,37 +33,16 @@ var chatCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer inst.Close()
-
-		// Intercept Ctrl+C (SIGINT) to ensure Chromium is gracefully terminated
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-		go func() {
-			<-sigCh
-			fmt.Println(dim("\nExiting session..."))
-			_ = inst.Close()
-			os.Exit(0)
-		}()
-
-		page := inst.Page
-		itc, err := interceptor.NewInterceptor(page)
-		if err != nil {
-			return fmt.Errorf("failed to setup interceptor: %w", err)
-		}
-		defer itc.Stop()
+		defer eng.Close()
 
 		if chatSessionID != "" {
 			fmt.Printf("%s\n", yellow("Connecting and loading conversation %s...", chatSessionID))
-			if err := conversation.OpenConversation(page, chatSessionID); err != nil {
-				return err
-			}
 		} else {
 			fmt.Println(yellow("Connecting to ChatGPT..."))
-			if err := page.Navigate("https://chatgpt.com"); err != nil {
-				return err
-			}
-			_ = page.WaitLoad()
-			time.Sleep(3 * time.Second)
+		}
+
+		if err := eng.Initialize(chatSessionID); err != nil {
+			return err
 		}
 
 		var turns []exporter.Turn
@@ -100,10 +74,27 @@ var chatCmd = &cobra.Command{
 			}
 			if strings.EqualFold(input, "/new") || strings.EqualFold(input, "/clear") {
 				fmt.Println(yellow("Starting a fresh conversation thread..."))
-				if err := conversation.NewChat(page); err != nil {
+				if err := eng.NewChat(); err != nil {
 					fmt.Printf("%s\n", color.YellowString("Notice: could not start new chat: %v", err))
 				} else {
 					fmt.Println(green("✓ Fresh conversation thread ready."))
+				}
+				continue
+			}
+			if strings.EqualFold(input, "/history") {
+				hist, err := eng.GetHistory()
+				if err != nil || len(hist) == 0 {
+					fmt.Println(yellow("No visible messages found in this conversation."))
+				} else {
+					fmt.Println(cyan("━━━ Conversation History ━━━"))
+					for _, turn := range hist {
+						if turn.Role == "user" {
+							fmt.Printf("\n%s: %s\n", cyan("User"), turn.Content)
+						} else {
+							fmt.Printf("\n%s: %s\n", green("ChatGPT"), turn.Content)
+						}
+					}
+					fmt.Println(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
 				}
 				continue
 			}
@@ -116,7 +107,7 @@ var chatCmd = &cobra.Command{
 				if len(parts) == 2 && strings.TrimSpace(parts[1]) != "" {
 					targetID := strings.TrimSpace(parts[1])
 					fmt.Printf("%s\n", yellow("Switching to conversation %s...", targetID))
-					if err := conversation.OpenConversation(page, targetID); err != nil {
+					if err := eng.SwitchConversation(targetID); err != nil {
 						fmt.Printf("%s\n", color.RedString("Error switching conversation: %v", err))
 					} else {
 						fmt.Println(green("✓ Switched to conversation %s", targetID))
@@ -125,63 +116,29 @@ var chatCmd = &cobra.Command{
 				continue
 			}
 
-			// Drain any stale buffered response before sending new prompt
-			itc.Drain()
+			fmt.Printf("\n%s ", green("ChatGPT >"))
 
-			if err := conversation.SendPrompt(page, input); err != nil {
-				fmt.Printf("%s\n", color.RedString("Error sending prompt: %v", err))
+			resp, err := eng.Prompt(cmd.Context(), spider.PromptRequest{
+				Prompt: input,
+				OnToken: func(token string) {
+					fmt.Print(token)
+				},
+			})
+			if err != nil {
+				fmt.Printf("\n%s\n", color.RedString("Error: %v", err))
 				continue
 			}
 
-			fmt.Print(dim("Waiting for ChatGPT... "))
-
-			var responseText string
-			var convID string
-
-			respCh := make(chan string, 1)
-			go func() {
-				select {
-				case resp := <-itc.ResponseChannel():
-					select {
-					case respCh <- resp:
-					default:
-					}
-				case <-time.After(60 * time.Second):
-				}
-			}()
-
-			go func() {
-				if domText, err := conversation.WaitForCompletion(page, 45*time.Second); err == nil && domText != "" {
-					select {
-					case respCh <- domText:
-					default:
-					}
-				}
-			}()
-
-			select {
-			case res := <-respCh:
-				responseText = res
-				_, convID = itc.GetLastResponse()
-				if convID == "" {
-					convID = conversation.GetCurrentConversationID(page)
-				}
-			case <-time.After(60 * time.Second):
-				fmt.Printf("%s\n", color.RedString("Response timeout: took longer than 60s"))
-				continue
-			}
-
-			fmt.Printf("\r%s\n\n", green("ChatGPT >"))
-			fmt.Println(responseText)
-			if convID != "" {
-				fmt.Printf("\n%s\n", dim("[chat-session-id: %s]", convID))
+			fmt.Println()
+			if resp.ConversationID != "" {
+				fmt.Printf("%s\n", dim("[chat-session-id: %s]", resp.ConversationID))
 			}
 
 			turns = append(turns, exporter.Turn{
 				Prompt:         input,
-				Response:       responseText,
-				ConversationID: convID,
-				Timestamp:      time.Now().UTC().Format(time.RFC3339),
+				Response:       resp.Text,
+				ConversationID: resp.ConversationID,
+				Timestamp:      resp.Timestamp,
 			})
 
 			if webhookURL != "" {

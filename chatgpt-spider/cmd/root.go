@@ -13,6 +13,7 @@ var (
 	debug         bool
 	anon          bool
 	newChat       bool
+	history       bool
 	chatSessionID string
 	sessionToken  string
 	webhookURL    string
@@ -38,6 +39,7 @@ func init() {
 	RootCmd.PersistentFlags().BoolVar(&headless, "headless", true, "Run browser in headless mode (default true, set --headless=false to view browser)")
 	RootCmd.PersistentFlags().BoolVar(&anon, "anon", false, "Run in anonymous / guest mode without using saved credentials or profile")
 	RootCmd.PersistentFlags().BoolVar(&newChat, "new-chat", false, "Start a fresh conversation thread before sending prompt")
+	RootCmd.PersistentFlags().BoolVar(&history, "history", false, "Fetch and display the message history of the conversation")
 	RootCmd.PersistentFlags().StringVar(&chatSessionID, "chat-session-id", "", "Resume a specific existing conversation by ID or URL (e.g., 67c9b2e1-...)")
 	RootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Keep browser inspector / devtools open")
 	RootCmd.PersistentFlags().StringVarP(&sessionToken, "session-token", "t", "", "ChatGPT __Secure-next-auth.session-token cookie")
