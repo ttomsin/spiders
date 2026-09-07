@@ -81,31 +81,38 @@ func SendPrompt(page *rod.Page, promptText string) error {
 func WaitForCompletion(page *rod.Page, maxWait time.Duration) (string, error) {
 	deadline := time.Now().Add(maxWait)
 
-	// Wait briefly for streaming indicator or first tokens to appear
-	time.Sleep(500 * time.Millisecond)
-
 	var lastObservedText string
 	unchangedCount := 0
+	hasSeenStreaming := false
+
+	// First wait up to 5 seconds for streaming to actually begin or first tokens to render
+	initDeadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(initDeadline) {
+		stopBtn, _ := page.Timeout(200 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
+		if stopBtn != nil {
+			hasSeenStreaming = true
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 
 	for time.Now().Before(deadline) {
-		// Check if stop streaming button is visible
 		stopBtn, _ := page.Timeout(200 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
+		if stopBtn != nil {
+			hasSeenStreaming = true
+		}
 
 		// Find assistant response elements - always inspect the LAST assistant message on the page
 		assistantMsgs, err := page.Elements("article [data-message-author-role='assistant'], div[data-message-author-role='assistant'], .markdown")
 		if err == nil && len(assistantMsgs) > 0 {
-			// Grab the latest assistant message
 			lastElem := assistantMsgs[len(assistantMsgs)-1]
 			text, _ := lastElem.Text()
 			trimmed := strings.TrimSpace(text)
 			if trimmed != "" {
-				if stopBtn == nil {
-					// Stop button gone and we have content - finished!
-					return trimmed, nil
-				}
 				if trimmed == lastObservedText {
 					unchangedCount++
-					if unchangedCount >= 4 { // stable for ~1.2 seconds without stop button
+					// If streaming stopped (no stop button) and content has been stable for at least 1.5s
+					if (hasSeenStreaming && stopBtn == nil && unchangedCount >= 3) || unchangedCount >= 6 {
 						return trimmed, nil
 					}
 				} else {
