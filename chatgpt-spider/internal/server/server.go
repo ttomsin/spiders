@@ -199,12 +199,16 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			Prompt:         promptText,
 			ConversationID: convID,
 			OnToken: func(delta string) {
+				currentConvID := convID
+				if currentConvID == "" {
+					currentConvID = s.engine.GetCurrentConversationID()
+				}
 				chunk := StreamChunk{
 					ID:             chunkID,
 					Object:         "chat.completion.chunk",
 					Created:        time.Now().Unix(),
 					Model:          modelName,
-					ConversationID: s.engine.GetCurrentConversationID(),
+					ConversationID: currentConvID,
 					Choices: []StreamChoice{
 						{
 							Index: 0,

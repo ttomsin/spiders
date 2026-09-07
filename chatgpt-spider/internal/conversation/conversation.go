@@ -77,35 +77,68 @@ func SendPrompt(page *rod.Page, promptText string) error {
 	return page.KeyActions().Press(input.Enter).Do()
 }
 
+// getAssistantElements returns all assistant message articles currently in the DOM
+func getAssistantElements(page *rod.Page) []*rod.Element {
+	articles, err := page.Elements("article")
+	if err == nil && len(articles) > 0 {
+		var assistants []*rod.Element
+		for _, art := range articles {
+			roleAttr, _ := art.Attribute("data-message-author-role")
+			if roleAttr != nil && *roleAttr == "assistant" {
+				assistants = append(assistants, art)
+				continue
+			}
+			if asst, _ := art.Element("[data-message-author-role='assistant']"); asst != nil {
+				assistants = append(assistants, art)
+			}
+		}
+		if len(assistants) > 0 {
+			return assistants
+		}
+	}
+
+	// Fallback to direct attribute selector
+	elems, err := page.Elements("[data-message-author-role='assistant']")
+	if err == nil && len(elems) > 0 {
+		return elems
+	}
+
+	return nil
+}
+
+// CountAssistantMessages returns the number of assistant message blocks currently in the DOM
+func CountAssistantMessages(page *rod.Page) int {
+	return len(getAssistantElements(page))
+}
+
 // StreamCompletion polls the DOM and invokes onDelta with each newly rendered token chunk
-func StreamCompletion(page *rod.Page, maxWait time.Duration, onDelta func(delta string)) (string, error) {
+func StreamCompletion(page *rod.Page, initialCount int, maxWait time.Duration, onDelta func(delta string)) (string, error) {
 	deadline := time.Now().Add(maxWait)
 
 	var lastObservedText string
 	unchangedCount := 0
 	hasSeenStreaming := false
 
-	// Wait up to 5 seconds for streaming indicator or first tokens
-	initDeadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(initDeadline) {
-		stopBtn, _ := page.Timeout(200 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
-		if stopBtn != nil {
-			hasSeenStreaming = true
-			break
-		}
-		time.Sleep(150 * time.Millisecond)
-	}
+	// Give ChatGPT up to 12s to begin generating
+	startDeadline := time.Now().Add(12 * time.Second)
 
 	for time.Now().Before(deadline) {
-		stopBtn, _ := page.Timeout(150 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
+		stopBtn, _ := page.Timeout(100 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
 		if stopBtn != nil {
 			hasSeenStreaming = true
 		}
 
-		assistantMsgs, err := page.Elements("article [data-message-author-role='assistant'], div[data-message-author-role='assistant'], .markdown")
-		if err == nil && len(assistantMsgs) > 0 {
+		assistantMsgs := getAssistantElements(page)
+		if len(assistantMsgs) > initialCount {
 			lastElem := assistantMsgs[len(assistantMsgs)-1]
-			text, _ := lastElem.Text()
+
+			var text string
+			if md, err := lastElem.Element(".markdown, div[class*='whitespace-pre-wrap']"); err == nil && md != nil {
+				text, _ = md.Text()
+			} else {
+				text, _ = lastElem.Text()
+			}
+
 			if text != "" {
 				if len(text) > len(lastObservedText) {
 					delta := text[len(lastObservedText):]
@@ -116,11 +149,27 @@ func StreamCompletion(page *rod.Page, maxWait time.Duration, onDelta func(delta 
 					unchangedCount = 0
 				} else if text == lastObservedText {
 					unchangedCount++
-					if (hasSeenStreaming && stopBtn == nil && unchangedCount >= 3) || unchangedCount >= 6 {
+					// If we observed streaming and the stop button disappeared, finish after 2 unchanged polls (~250ms)
+					if hasSeenStreaming && stopBtn == nil && unchangedCount >= 2 {
+						return strings.TrimSpace(lastObservedText), nil
+					}
+					// If no stop button is active and text has stabilized for 6 polls (~750ms), finish
+					if stopBtn == nil && unchangedCount >= 6 {
 						return strings.TrimSpace(lastObservedText), nil
 					}
 				}
 			}
+		} else if time.Now().After(startDeadline) && !hasSeenStreaming {
+			// In case the selector differed, check fallback
+			fallbacks, _ := page.Elements(".markdown")
+			if len(fallbacks) > initialCount {
+				lastElem := fallbacks[len(fallbacks)-1]
+				text, _ := lastElem.Text()
+				if text != "" {
+					return strings.TrimSpace(text), nil
+				}
+			}
+			return "", fmt.Errorf("timeout waiting for assistant to begin generating")
 		}
 
 		time.Sleep(120 * time.Millisecond)
@@ -134,8 +183,8 @@ func StreamCompletion(page *rod.Page, maxWait time.Duration, onDelta func(delta 
 }
 
 // WaitForCompletion polls the DOM to detect when response generation finishes and returns immediately
-func WaitForCompletion(page *rod.Page, maxWait time.Duration) (string, error) {
-	return StreamCompletion(page, maxWait, nil)
+func WaitForCompletion(page *rod.Page, initialCount int, maxWait time.Duration) (string, error) {
+	return StreamCompletion(page, initialCount, maxWait, nil)
 }
 
 // NewChat triggers a fresh conversation tab

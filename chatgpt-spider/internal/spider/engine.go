@@ -11,7 +11,6 @@ import (
 
 	"chatgpt-spider/internal/browser"
 	"chatgpt-spider/internal/conversation"
-	"chatgpt-spider/internal/interceptor"
 )
 
 // Options holds initialization options for the spider engine
@@ -40,8 +39,8 @@ type PromptResponse struct {
 // Engine encapsulates the browser and automation lifecycle
 type Engine struct {
 	mu          sync.Mutex
+	convMu      sync.RWMutex
 	inst        *browser.BrowserInstance
-	itc         *interceptor.Interceptor
 	currentConv string
 }
 
@@ -57,16 +56,8 @@ func NewEngine(opts Options) (*Engine, error) {
 		return nil, fmt.Errorf("failed to launch browser: %w", err)
 	}
 
-	page := inst.Page
-	itc, err := interceptor.NewInterceptor(page)
-	if err != nil {
-		_ = inst.Close()
-		return nil, fmt.Errorf("failed to setup interceptor: %w", err)
-	}
-
 	eng := &Engine{
 		inst: inst,
-		itc:  itc,
 	}
 
 	// Graceful termination handling
@@ -88,7 +79,7 @@ func (e *Engine) Initialize(initialConvID string) error {
 
 	page := e.inst.Page
 	if initialConvID != "" {
-		e.currentConv = initialConvID
+		e.setConversationID(initialConvID)
 		return conversation.OpenConversation(page, initialConvID)
 	}
 
@@ -109,63 +100,36 @@ func (e *Engine) Prompt(ctx context.Context, req PromptRequest) (*PromptResponse
 
 	if req.NewChat {
 		if err := conversation.NewChat(page); err == nil {
-			e.currentConv = ""
+			e.setConversationID("")
 		}
-	} else if req.ConversationID != "" && req.ConversationID != e.currentConv {
+	} else if req.ConversationID != "" && req.ConversationID != e.GetCurrentConversationID() {
 		if err := conversation.OpenConversation(page, req.ConversationID); err == nil {
-			e.currentConv = req.ConversationID
+			e.setConversationID(req.ConversationID)
 		}
 	}
 
-	// Purge stale interceptor chunks before sending
-	e.itc.Drain()
+	// Count assistant messages in DOM before dispatching prompt
+	initialCount := conversation.CountAssistantMessages(page)
 
 	if err := conversation.SendPrompt(page, req.Prompt); err != nil {
 		return nil, fmt.Errorf("error sending prompt: %w", err)
 	}
 
-	respCh := make(chan string, 1)
-	go func() {
-		select {
-		case resp := <-e.itc.ResponseChannel():
-			select {
-			case respCh <- resp:
-			default:
-			}
-		case <-time.After(60 * time.Second):
-		}
-	}()
-
 	// Stream live tokens through the DOM watcher
-	go func() {
-		if text, err := conversation.StreamCompletion(page, 45*time.Second, req.OnToken); err == nil && text != "" {
-			select {
-			case respCh <- text:
-			default:
-			}
-		}
-	}()
+	responseText, err := conversation.StreamCompletion(page, initialCount, 60*time.Second, req.OnToken)
+	if err != nil {
+		return nil, err
+	}
 
-	var responseText string
-	var convID string
-
-	select {
-	case res := <-respCh:
-		responseText = res
-		_, convID = e.itc.GetLastResponse()
-		if convID == "" {
-			convID = conversation.GetCurrentConversationID(page)
-		}
-		if convID != "" {
-			e.currentConv = convID
-		}
-	case <-time.After(60 * time.Second):
-		return nil, fmt.Errorf("response timeout: took longer than 60s")
+	// Read updated conversation ID from page URL
+	convID := conversation.GetCurrentConversationID(page)
+	if convID != "" {
+		e.setConversationID(convID)
 	}
 
 	return &PromptResponse{
 		Text:           responseText,
-		ConversationID: e.currentConv,
+		ConversationID: e.GetCurrentConversationID(),
 		Timestamp:      time.Now().UTC().Format(time.RFC3339),
 	}, nil
 }
@@ -181,7 +145,7 @@ func (e *Engine) GetHistory() ([]conversation.ConversationTurn, error) {
 func (e *Engine) SwitchConversation(convID string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.currentConv = convID
+	e.setConversationID(convID)
 	return conversation.OpenConversation(e.inst.Page, convID)
 }
 
@@ -189,18 +153,28 @@ func (e *Engine) SwitchConversation(convID string) error {
 func (e *Engine) NewChat() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.currentConv = ""
+	e.setConversationID("")
 	return conversation.NewChat(e.inst.Page)
 }
 
-// GetCurrentConversationID returns the current active conversation ID
+// GetCurrentConversationID returns the current active conversation ID (non-blocking)
 func (e *Engine) GetCurrentConversationID() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.currentConv != "" {
-		return e.currentConv
+	e.convMu.RLock()
+	id := e.currentConv
+	e.convMu.RUnlock()
+	if id != "" {
+		return id
 	}
-	return conversation.GetCurrentConversationID(e.inst.Page)
+	if e.inst != nil && e.inst.Page != nil {
+		return conversation.GetCurrentConversationID(e.inst.Page)
+	}
+	return ""
+}
+
+func (e *Engine) setConversationID(id string) {
+	e.convMu.Lock()
+	e.currentConv = id
+	e.convMu.Unlock()
 }
 
 // Close gracefully closes the engine
@@ -208,15 +182,8 @@ func (e *Engine) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	var itcErr, instErr error
-	if e.itc != nil {
-		itcErr = e.itc.Stop()
-	}
 	if e.inst != nil {
-		instErr = e.inst.Close()
+		return e.inst.Close()
 	}
-	if itcErr != nil {
-		return itcErr
-	}
-	return instErr
+	return nil
 }

@@ -55,9 +55,11 @@ func Launch(opts Options) (*BrowserInstance, error) {
 
 	// Remove stale lockfiles if leftover from a previous crash/termination
 	_ = os.Remove(filepath.Join(userDataDir, "lockfile"))
+	_ = os.Remove(filepath.Join(userDataDir, "Lockfile"))
 	_ = os.Remove(filepath.Join(userDataDir, "SingletonLock"))
 	_ = os.Remove(filepath.Join(userDataDir, "SingletonSocket"))
 	_ = os.Remove(filepath.Join(userDataDir, "SingletonCookie"))
+	_ = os.Remove(filepath.Join(userDataDir, "Default", "lockfile"))
 
 	l := launcher.New().
 		Leakless(false).
