@@ -20,15 +20,57 @@ var (
 	outputFile    string
 )
 
+const AppVersion = "1.0.0"
+
+// ShowWelcomeMessage displays the custom ASCII banner for chatgpt-spider
+func ShowWelcomeMessage() {
+	cyan := color.New(color.FgHiCyan).SprintFunc()
+	boldGreen := color.New(color.FgGreen, color.Bold).SprintFunc()
+	dim := color.New(color.FgHiBlack).SprintFunc()
+	boldBlue := color.New(color.FgHiBlue, color.Bold).SprintFunc()
+
+	asciiArt := fmt.Sprintf(`
+%s     %s
+%s     %s
+%s      %s
+%s       %s
+%s      %s
+%s                   %s
+%s                                        %s
+`,
+		cyan("      / _ \\     "), boldGreen("        _           _              _     ____        _     _           "),
+		cyan("    \\_\\(_)/_/   "), boldGreen("   ____| |__   __ _| |_ __ _ _ __ | |_   / ___| _ __ (_) __| | ___ _ __ "),
+		cyan("     _//o\\\\_    "), boldGreen("  / __/| '_ \\ / _` | __/ _` | '_ \\| __|  \\___ \\| '_ \\| |/ _` |/ _ \\ '__|"),
+		cyan("      /   \\     "), boldGreen(" | (__ | | | | (_| | || (_| | |_) | |_    ___) | |_) | | (_| |  __/ |   "),
+		cyan("     /     \\    "), boldGreen("  \\___|_| |_|\\__,_|\\__\\__, | .__/ \\__|  |____/| .__/|_|\\__,_|\\___|_|   "),
+		cyan("                "), boldGreen("                       |___/|_|                |_|                      "),
+		"", dim("       [Native ChatGPT Automation Engine & REST Server • v"+AppVersion+"]"),
+	)
+
+	fmt.Print(asciiArt)
+	fmt.Printf("\n%s %s\n", boldBlue("chatgpt-spider:"), "High-performance native ChatGPT crawler & automation engine in Go.")
+	fmt.Println(dim("• Native CDP • Real-time Token Streaming • Zero External Drivers • OpenAI REST Server"))
+	fmt.Println()
+}
+
 var RootCmd = &cobra.Command{
 	Use:   "chatgpt-spider",
 	Short: "chatgpt-spider is a high-performance native ChatGPT crawler & automation engine in Go",
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Show banner for interactive commands or when help is requested
+		if cmd.Name() == "chat" || cmd.Name() == "serve" || cmd.Name() == "chatgpt-spider" {
+			ShowWelcomeMessage()
+		}
+	},
 	Long: `chatgpt-spider automates ChatGPT interactions through Chrome DevTools Protocol (CDP)
 with anti-detection stealth, network response stream interception, and zero external driver dependencies.
 
 Features:
 • Native CDP with anti-bot stealth (no chromedriver.exe required)
+• Real-time token streaming with live typewriter effect
 • Direct Network Hijack of /backend-api/conversation Server-Sent Events (SSE)
+• OpenAI-compatible REST API server (chatgpt-spider serve)
+• In-conversation history extraction (--history or /history)
 • Headless by default (pass --headless=false to view the UI)
 • Persistent profile storage (~/.chatgpt-spider/profile) or anonymous guest mode (--anon)
 • Interactive terminal REPL, single-prompt execution, and bulk batch processing
@@ -48,6 +90,9 @@ func init() {
 }
 
 func Execute() {
+	if len(os.Args) == 1 || (len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "help")) {
+		ShowWelcomeMessage()
+	}
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(color.RedString("Error: %v", err))
 		os.Exit(1)

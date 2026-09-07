@@ -215,29 +215,64 @@ type ConversationTurn struct {
 func GetConversationHistory(page *rod.Page) ([]ConversationTurn, error) {
 	var turns []ConversationTurn
 
-	articles, err := page.Elements("article")
-	if err != nil || len(articles) == 0 {
-		return turns, nil
+	// Wait up to 5 seconds for messages to render after navigation
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		arts, _ := page.Elements("article, [data-message-author-role]")
+		if len(arts) > 0 {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
 	}
 
-	for _, art := range articles {
-		role := "user"
-		roleAttr, _ := art.Attribute("data-message-author-role")
-		if roleAttr != nil && *roleAttr != "" {
-			role = *roleAttr
-		} else {
-			if asst, _ := art.Element("[data-message-author-role='assistant']"); asst != nil {
+	articles, err := page.Elements("article")
+	if err == nil && len(articles) > 0 {
+		for _, art := range articles {
+			role := "user"
+			roleAttr, _ := art.Attribute("data-message-author-role")
+			if roleAttr != nil && *roleAttr != "" {
+				role = *roleAttr
+			} else if asst, _ := art.Element("[data-message-author-role='assistant']"); asst != nil {
 				role = "assistant"
 			}
-		}
 
-		text, _ := art.Text()
-		trimmed := strings.TrimSpace(text)
-		if trimmed != "" {
-			turns = append(turns, ConversationTurn{
-				Role:    role,
-				Content: trimmed,
-			})
+			// Try getting markdown / text container first
+			msgBody, _ := art.Element(".markdown, [data-message-author-role], div[class*='whitespace-pre-wrap']")
+			var text string
+			if msgBody != nil {
+				text, _ = msgBody.Text()
+			} else {
+				text, _ = art.Text()
+			}
+
+			trimmed := strings.TrimSpace(text)
+			if trimmed != "" {
+				turns = append(turns, ConversationTurn{
+					Role:    role,
+					Content: trimmed,
+				})
+			}
+		}
+	}
+
+	// Fallback to data-message-author-role elements directly if article is not used in DOM
+	if len(turns) == 0 {
+		elems, err := page.Elements("[data-message-author-role]")
+		if err == nil && len(elems) > 0 {
+			for _, elem := range elems {
+				role := "user"
+				if roleAttr, _ := elem.Attribute("data-message-author-role"); roleAttr != nil && *roleAttr != "" {
+					role = *roleAttr
+				}
+				text, _ := elem.Text()
+				trimmed := strings.TrimSpace(text)
+				if trimmed != "" {
+					turns = append(turns, ConversationTurn{
+						Role:    role,
+						Content: trimmed,
+					})
+				}
+			}
 		}
 	}
 
