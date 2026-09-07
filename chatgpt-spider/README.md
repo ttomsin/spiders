@@ -50,6 +50,8 @@
 
 ## How chatgpt-spider Works
 
+> 📖 **Deep Technical Dive**: For an exhaustive architectural breakdown including token streaming algorithms, lockfile mechanics, and concurrency design, read [HOW-CHATGPT-SPIDER-WORKS.md](HOW-CHATGPT-SPIDER-WORKS.md).
+
 ```
                      ┌────────────────────────────────────────────────────────┐
                      │                     Your Application                   │
