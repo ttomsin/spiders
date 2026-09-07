@@ -171,6 +171,32 @@ In earlier designs, an HTTP interceptor attempted to hijack `/backend-api/conver
 * Hijacking in Chromium pauses the request; if Go fails to forward it properly, the browser hangs indefinitely.
 * In contrast, **DOM Streaming** allows Chromium's native HTTP/2 networking to handle all TLS and Cloudflare negotiation legitimately. The scraper simply reads the visible text as the browser renders it.
 
+### Long Text Handling & Pasted Document Uploads
+When a user (or automated script) inputs very large text into ChatGPT (e.g., long code files, JSON payloads, or multi-page documents):
+1. **ChatGPT Automatic Card Conversion**: ChatGPT's React input handler intercepts large inputs and automatically converts the raw text into a virtual document attachment pill (showing `{document_id... Pasted text`).
+2. **Asynchronous Upload State**: While creating this attachment, ChatGPT uploads the text payload in the background. During this processing period:
+   * The Send button is set to `disabled=""` and `aria-disabled="true"`.
+   * Pressing the Enter key does nothing because form submission is gated by the upload state.
+3. **The Solution in `chatgpt-spider`**:
+   In `SendPrompt`, after injecting the prompt, the engine enters a resilient polling loop:
+   ```go
+   // Wait up to 30s for pasted text upload / document attachment to finish
+   for time.Now().Before(deadline) {
+       for _, btnSel := range sendButtonSelectors {
+           btn, _ := page.Timeout(300 * time.Millisecond).Element(btnSel)
+           if btn != nil {
+               disabled, _ := btn.Attribute("disabled")
+               ariaDisabled, _ := btn.Attribute("aria-disabled")
+               if disabled == nil && (ariaDisabled == nil || *ariaDisabled != "true") {
+                   return btn.Click(proto.InputMouseButtonLeft, 1)
+               }
+           }
+       }
+       time.Sleep(250 * time.Millisecond)
+   }
+   ```
+   If the prompt is short, the button is immediately enabled and clicked in <300ms. If the prompt is large and triggers a "Pasted text" document upload, the engine safely waits until the upload finishes and the button becomes active before dispatching.
+
 ---
 
 ## 6. Concurrency Architecture & Deadlock Prevention
