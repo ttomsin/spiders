@@ -29,6 +29,7 @@ var promptCmd = &cobra.Command{
 
 		inst, err := browser.Launch(browser.Options{
 			Headless:     headless,
+			Anonymous:    anon,
 			SessionToken: sessionToken,
 			Debug:        debug,
 		})
@@ -50,6 +51,13 @@ var promptCmd = &cobra.Command{
 		}
 		_ = page.WaitLoad()
 		time.Sleep(3 * time.Second)
+
+		if newChat {
+			fmt.Printf("%s\n", yellow("Starting new chat thread..."))
+			if err := conversation.NewChat(page); err != nil {
+				fmt.Printf("%s\n", color.YellowString("Notice: new chat trigger error: %v", err))
+			}
+		}
 
 		fmt.Printf("%s\n", yellow("Sending prompt..."))
 		if err := conversation.SendPrompt(page, promptText); err != nil {

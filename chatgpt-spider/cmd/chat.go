@@ -25,10 +25,11 @@ var chatCmd = &cobra.Command{
 		dim := color.New(color.FgHiBlack).SprintfFunc()
 
 		fmt.Println(cyan("Starting interactive ChatGPT session..."))
-		fmt.Println(dim("Type 'exit', 'quit', or press Ctrl+C to conclude.\n"))
+		fmt.Println(dim("Commands: '/new' to start a new chat, 'exit' or 'quit' to conclude.\n"))
 
 		inst, err := browser.Launch(browser.Options{
 			Headless:     headless,
+			Anonymous:    anon,
 			SessionToken: sessionToken,
 			Debug:        debug,
 		})
@@ -65,6 +66,15 @@ var chatCmd = &cobra.Command{
 			}
 			if strings.EqualFold(input, "exit") || strings.EqualFold(input, "quit") {
 				break
+			}
+			if strings.EqualFold(input, "/new") || strings.EqualFold(input, "/clear") {
+				fmt.Println(yellow("Starting a fresh conversation thread..."))
+				if err := conversation.NewChat(page); err != nil {
+					fmt.Printf("%s\n", color.YellowString("Notice: could not start new chat: %v", err))
+				} else {
+					fmt.Println(green("✓ Fresh conversation thread ready."))
+				}
+				continue
 			}
 
 			if err := conversation.SendPrompt(page, input); err != nil {

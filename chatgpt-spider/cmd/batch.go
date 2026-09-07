@@ -56,6 +56,7 @@ var batchCmd = &cobra.Command{
 
 		inst, err := browser.Launch(browser.Options{
 			Headless:     headless,
+			Anonymous:    anon,
 			SessionToken: sessionToken,
 			Debug:        debug,
 		})

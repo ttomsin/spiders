@@ -7,9 +7,11 @@
 ## Key Features
 
 - 🚀 **Zero External Drivers**: No `chromedriver.exe` needed. Built on native CDP (`go-rod` + `stealth`).
+- 🤖 **Headless by Default**: Fast, silent execution in the background without browser windows popping up. View the browser anytime with `--headless=false`.
 - 📡 **Direct Network Stream Capture**: Intercepts `POST /backend-api/conversation` SSE JSON streams straight from the wire, extracting clean Markdown and text without relying on fragile React DOM classes.
-- 🔐 **Persistent Browser Profile & Sessions**: User profiles are preserved in `~/.chatgpt-spider/profile` so you **only log in once**. Subsequent runs start pre-authenticated.
-- 🔑 **Encrypted Session Token Storage**: Securely store your `__Secure-next-auth.session-token` with AES-256 GCM using `chatgpt-spider auth set-token`.
+- 🔐 **Persistent Profiles or Pure Anonymous**: User profiles are preserved in `~/.chatgpt-spider/profile` so you log in once. Want unauthenticated public guest mode? Just pass `--anon`!
+- 🆕 **New Chat Sessions**: Start a fresh thread with `--new-chat` or by typing `/new` inside interactive chat.
+- 🔑 **Encrypted Session Token Storage**: Securely store your `__Secure-next-auth.session-token` (and chunked `.0`, `.1`) with AES-256 GCM using `chatgpt-spider auth set-token`.
 - 💬 **Interactive Terminal REPL**: Chat naturally in your terminal with `chatgpt-spider chat`.
 - ⚡ **Batch Processing**: Run hundreds of prompts from a text file with `chatgpt-spider batch -i prompts.txt -o results.json`.
 - 🌐 **Direct Webhook Streaming**: Ingest conversation turns directly into your backend API via `--webhook-url`.
@@ -26,36 +28,57 @@ cd d:\Projects\GolandProjects\spiders\chatgpt-spider
 go build -o chatgpt-spider.exe .
 ```
 
-### 2. Authentication
+### 2. Authentication & Guest Mode
 
-You have two simple ways to authenticate:
+You have complete flexibility:
 
-#### Option A: Log In Visually Once (Recommended)
-Simply run any command without `--headless`. Chrome will open to ChatGPT. Complete your login once, and your session is permanently saved in `~/.chatgpt-spider/profile`.
+#### Option A: Anonymous Guest Mode (No Login Required)
+Want to use ChatGPT's free public tier without logging in or using your stored session? Just add `--anon`:
+```bash
+.\chatgpt-spider.exe prompt "What is the capital of France?" --anon
+```
 
-#### Option B: Store Session Token Securely
-Copy your `__Secure-next-auth.session-token` cookie from your browser and save it:
+#### Option B: Store Session Token Securely (Logged In)
+Copy your `__Secure-next-auth.session-token` (or chunked `.0` and `.1`) cookies and save them:
 ```bash
 .\chatgpt-spider.exe auth set-token
 ```
-Or pass it directly on the command line:
+Or pass directly on the command line:
 ```bash
 .\chatgpt-spider.exe prompt "Hello!" -t "eyJhbGciOi..."
 ```
+
+#### Option C: Log In Visually Once
+Run with `--headless=false`:
+```bash
+.\chatgpt-spider.exe chat --headless=false
+```
+Chrome will open to ChatGPT. Complete your login once, and your session is saved in `~/.chatgpt-spider/profile`.
 
 ---
 
 ## Usage Examples
 
-### Single Prompt Execution
+### Single Prompt (Headless by Default)
 ```powershell
-.\chatgpt-spider.exe prompt "Explain how goroutines and channels work in Go" -o response.md
+.\chatgpt-spider.exe prompt "Explain goroutines in Go" -o response.md
+```
+
+### Single Prompt in Anonymous Guest Mode
+```powershell
+.\chatgpt-spider.exe prompt "Write a haiku about clouds" --anon
+```
+
+### Start a Fresh Chat Thread
+```powershell
+.\chatgpt-spider.exe prompt "Start a fresh topic on architecture" --new-chat
 ```
 
 ### Interactive Terminal Chat
 ```powershell
 .\chatgpt-spider.exe chat -o conversation.json
 ```
+*(In chat mode, type `/new` to start a fresh conversation thread, or `exit` to quit).*
 
 ### Batch Prompt File Execution
 Given a `prompts.txt`:
@@ -81,16 +104,18 @@ Execute them in sequence:
 
 ```text
 Flags:
+      --anon                   Run in anonymous / guest mode without using saved credentials or profile
+      --headless               Run browser in headless mode (default true, set --headless=false to view browser)
+      --new-chat               Start a fresh conversation thread before sending prompt
+      --debug                  Keep browser inspector / devtools open
   -t, --session-token string   ChatGPT __Secure-next-auth.session-token cookie
-      --headless               Run browser in headless mode (default false)
-      --debug                  Keep browser inspector open
   -o, --output string          Output file path (.md or .json)
       --webhook-url string     Custom HTTP webhook endpoint to receive conversation turns
 ```
 
 ### Subcommands
 - `prompt <text>`: Send a single prompt and retrieve the response.
-- `chat`: Open an interactive chat REPL in the terminal.
+- `chat`: Open an interactive chat REPL in the terminal (`/new` starts fresh thread).
 - `batch -i <file>`: Process a text file of prompts sequentially.
 - `auth [set-token|status|clear]`: Manage encrypted session tokens.
 

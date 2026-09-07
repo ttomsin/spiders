@@ -11,6 +11,8 @@ import (
 var (
 	headless     bool
 	debug        bool
+	anon         bool
+	newChat      bool
 	sessionToken string
 	webhookURL   string
 	outputFile   string
@@ -25,13 +27,16 @@ with anti-detection stealth, network response stream interception, and zero exte
 Features:
 • Native CDP with anti-bot stealth (no chromedriver.exe required)
 • Direct Network Hijack of /backend-api/conversation Server-Sent Events (SSE)
-• Persistent profile storage (~/.chatgpt-spider/profile) — log in once, stay logged in
+• Headless by default (pass --headless=false to view the UI)
+• Persistent profile storage (~/.chatgpt-spider/profile) or anonymous guest mode (--anon)
 • Interactive terminal REPL, single-prompt execution, and bulk batch processing
 • Multi-format export (Markdown, JSON) and direct Webhook data streaming`,
 }
 
 func init() {
-	RootCmd.PersistentFlags().BoolVar(&headless, "headless", false, "Run browser in headless mode (default false to allow initial verification)")
+	RootCmd.PersistentFlags().BoolVar(&headless, "headless", true, "Run browser in headless mode (default true, set --headless=false to view browser)")
+	RootCmd.PersistentFlags().BoolVar(&anon, "anon", false, "Run in anonymous / guest mode without using saved credentials or profile")
+	RootCmd.PersistentFlags().BoolVar(&newChat, "new-chat", false, "Start a fresh conversation thread before sending prompt")
 	RootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Keep browser inspector / devtools open")
 	RootCmd.PersistentFlags().StringVarP(&sessionToken, "session-token", "t", "", "ChatGPT __Secure-next-auth.session-token cookie")
 	RootCmd.PersistentFlags().StringVar(&webhookURL, "webhook-url", "", "Custom HTTP webhook endpoint to dispatch conversation turns")

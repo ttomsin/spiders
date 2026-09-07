@@ -122,3 +122,29 @@ func WaitForCompletion(page *rod.Page, maxWait time.Duration) (string, error) {
 
 	return "", fmt.Errorf("timeout waiting for response")
 }
+
+// NewChat triggers a fresh conversation tab
+func NewChat(page *rod.Page) error {
+	// Try clicking the "New chat" button in the sidebar or header
+	newChatSelectors := []string{
+		"a[href='/']",
+		"button[aria-label='New chat']",
+		"a[data-testid='navigation-item-new-chat']",
+	}
+
+	for _, sel := range newChatSelectors {
+		if btn, err := page.Timeout(1 * time.Second).Element(sel); err == nil && btn != nil {
+			_ = btn.Click(proto.InputMouseButtonLeft, 1)
+			time.Sleep(1 * time.Second)
+			return nil
+		}
+	}
+
+	// Direct navigation fallback
+	if err := page.Navigate("https://chatgpt.com"); err != nil {
+		return err
+	}
+	_ = page.WaitLoad()
+	time.Sleep(2 * time.Second)
+	return nil
+}
