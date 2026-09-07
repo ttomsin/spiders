@@ -16,7 +16,7 @@ import (
 )
 
 var chatCmd = &cobra.Command{
-	Use:   "chat",
+	Use:   "chat [optional initial prompt]",
 	Short: "Start an interactive conversational terminal session with ChatGPT",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cyan := color.New(color.FgCyan, color.Bold).SprintfFunc()
@@ -62,12 +62,24 @@ var chatCmd = &cobra.Command{
 		var turns []exporter.Turn
 		scanner := bufio.NewScanner(os.Stdin)
 
+		initialInput := strings.TrimSpace(strings.Join(args, " "))
+		firstTurn := true
+
 		for {
-			fmt.Printf("\n%s ", cyan("You >"))
-			if !scanner.Scan() {
-				break
+			var input string
+			if firstTurn && initialInput != "" {
+				input = initialInput
+				firstTurn = false
+				fmt.Printf("\n%s %s\n", cyan("You >"), input)
+			} else {
+				firstTurn = false
+				fmt.Printf("\n%s ", cyan("You >"))
+				if !scanner.Scan() {
+					break
+				}
+				input = strings.TrimSpace(scanner.Text())
 			}
-			input := strings.TrimSpace(scanner.Text())
+
 			if input == "" {
 				continue
 			}
