@@ -3,6 +3,7 @@ package browser
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-rod/rod"
@@ -50,6 +51,12 @@ func Launch(opts Options) (*BrowserInstance, error) {
 	}
 
 	_ = os.MkdirAll(userDataDir, 0700)
+
+	// Remove stale lockfiles if leftover from a previous crash/termination
+	_ = os.Remove(filepath.Join(userDataDir, "lockfile"))
+	_ = os.Remove(filepath.Join(userDataDir, "SingletonLock"))
+	_ = os.Remove(filepath.Join(userDataDir, "SingletonSocket"))
+	_ = os.Remove(filepath.Join(userDataDir, "SingletonCookie"))
 
 	l := launcher.New().
 		Leakless(false).
