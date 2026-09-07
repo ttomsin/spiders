@@ -77,17 +77,34 @@ var chatCmd = &cobra.Command{
 			var responseText string
 			var convID string
 
-			select {
-			case resp := <-itc.ResponseChannel():
-				responseText = resp
-				_, convID = itc.GetLastResponse()
-			case <-time.After(45 * time.Second):
-				domText, domErr := conversation.WaitForCompletion(page, 30*time.Second)
-				if domErr != nil {
-					fmt.Printf("%s\n", color.RedString("Response error: %v", domErr))
-					continue
+			respCh := make(chan string, 1)
+			go func() {
+				select {
+				case resp := <-itc.ResponseChannel():
+					select {
+					case respCh <- resp:
+					default:
+					}
+				case <-time.After(60 * time.Second):
 				}
-				responseText = domText
+			}()
+
+			go func() {
+				if domText, err := conversation.WaitForCompletion(page, 45*time.Second); err == nil && domText != "" {
+					select {
+					case respCh <- domText:
+					default:
+					}
+				}
+			}()
+
+			select {
+			case res := <-respCh:
+				responseText = res
+				_, convID = itc.GetLastResponse()
+			case <-time.After(60 * time.Second):
+				fmt.Printf("%s\n", color.RedString("Response timeout: took longer than 60s"))
+				continue
 			}
 
 			fmt.Printf("\r%s\n\n", green("ChatGPT >"))

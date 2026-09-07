@@ -17,31 +17,56 @@ var authCmd = &cobra.Command{
 }
 
 var setTokenCmd = &cobra.Command{
-	Use:   "set-token [token]",
-	Short: "Store your __Secure-next-auth.session-token securely on your machine",
+	Use:   "set-token [tokens...]",
+	Short: "Store your __Secure-next-auth.session-token (.0, .1) securely on your machine",
+	Long: `Save your ChatGPT authentication session cookies.
+You can pass single tokens or multiple chunked cookies:
+  chatgpt-spider auth set-token "__Secure-next-auth.session-token.0=<val0>" "__Secure-next-auth.session-token.1=<val1>"
+Or pass them interactively.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var token string
+		cookieMap := make(map[string]string)
+
 		if len(args) > 0 {
-			token = strings.TrimSpace(args[0])
-		} else {
-			fmt.Print("Enter ChatGPT __Secure-next-auth.session-token (input hidden): ")
-			pass, err := term.ReadPassword(int(os.Stdin.Fd()))
-			fmt.Println()
-			if err != nil {
-				return err
+			for i, a := range args {
+				trimmed := strings.TrimSpace(a)
+				if strings.Contains(trimmed, "=") {
+					kv := strings.SplitN(trimmed, "=", 2)
+					cookieMap[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+				} else {
+					// Positional: if 2 args without =, treat as .0 and .1
+					if len(args) > 1 {
+						cookieMap[fmt.Sprintf("__Secure-next-auth.session-token.%d", i)] = trimmed
+					} else {
+						cookieMap["__Secure-next-auth.session-token"] = trimmed
+					}
+				}
 			}
-			token = strings.TrimSpace(string(pass))
+		} else {
+			fmt.Println("Enter ChatGPT session tokens. Press Enter on an empty prompt when done:")
+			for i := 0; ; i++ {
+				fmt.Printf("Token / Chunk .%d (input hidden): ", i)
+				pass, err := term.ReadPassword(int(os.Stdin.Fd()))
+				fmt.Println()
+				if err != nil {
+					return err
+				}
+				trimmed := strings.TrimSpace(string(pass))
+				if trimmed == "" {
+					break
+				}
+				cookieMap[fmt.Sprintf("__Secure-next-auth.session-token.%d", i)] = trimmed
+			}
 		}
 
-		if len(token) < 20 {
-			return fmt.Errorf("invalid token: session tokens are typically longer than 20 characters")
+		if len(cookieMap) == 0 {
+			return fmt.Errorf("no tokens provided")
 		}
 
-		if err := auth.SaveSessionToken(token); err != nil {
-			return fmt.Errorf("failed to save token: %w", err)
+		if err := auth.SaveSessionCookies(cookieMap); err != nil {
+			return fmt.Errorf("failed to save cookies: %w", err)
 		}
 
-		fmt.Println(color.GreenString("✓ ChatGPT session token securely saved!"))
+		fmt.Println(color.GreenString("✓ Successfully stored %d ChatGPT session cookie(s)!", len(cookieMap)))
 		return nil
 	},
 }
@@ -55,16 +80,19 @@ var statusCmd = &cobra.Command{
 		yellow := color.New(color.FgYellow).SprintfFunc()
 
 		profileDir, _ := auth.GetProfileDir()
-		token, err := auth.GetSessionToken()
+		cookies, err := auth.GetSessionCookies()
 		if err != nil {
 			return err
 		}
 
 		fmt.Printf("%s: %s\n", cyan("Profile Storage"), profileDir)
-		if token == "" {
-			fmt.Printf("%s: %s\n", cyan("Session Token"), yellow("None saved (using browser profile cookies)"))
+		if len(cookies) == 0 {
+			fmt.Printf("%s: %s\n", cyan("Session Cookies"), yellow("None saved (using browser profile cookies)"))
 		} else {
-			fmt.Printf("%s: %s (%s)\n", cyan("Session Token"), green("Stored"), auth.MaskToken(token))
+			fmt.Printf("%s: %s (%d stored)\n", cyan("Session Cookies"), green("Stored"), len(cookies))
+			for k, v := range cookies {
+				fmt.Printf("  • %s: %s\n", k, auth.MaskToken(v))
+			}
 		}
 		return nil
 	},

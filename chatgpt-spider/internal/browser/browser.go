@@ -3,6 +3,7 @@ package browser
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
@@ -66,35 +67,43 @@ func Launch(opts Options) (*BrowserInstance, error) {
 		DeviceScaleFactor: 1,
 	})
 
-	// Inject session token cookie if provided
-	token := opts.SessionToken
-	if token == "" {
-		if stored, err := auth.GetSessionToken(); err == nil && stored != "" {
-			token = stored
+	// Inject session cookies if stored or provided
+	cookies, _ := auth.GetSessionCookies()
+	if cookies == nil {
+		cookies = make(map[string]string)
+	}
+
+	if opts.SessionToken != "" {
+		if strings.Contains(opts.SessionToken, "=") {
+			// Format: "name=value" or multiple separated by semicolon
+			parts := strings.Split(opts.SessionToken, ";")
+			for _, p := range parts {
+				kv := strings.SplitN(strings.TrimSpace(p), "=", 2)
+				if len(kv) == 2 {
+					cookies[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+				}
+			}
+		} else {
+			cookies["__Secure-next-auth.session-token"] = opts.SessionToken
 		}
 	}
 
-	if token != "" {
-		_ = page.SetCookies([]*proto.NetworkCookieParam{
-			{
-				Name:     "__Secure-next-auth.session-token",
-				Value:    token,
-				Domain:   ".chatgpt.com",
-				Path:     "/",
-				HTTPOnly: true,
-				Secure:   true,
-				SameSite: proto.NetworkCookieSameSiteLax,
-			},
-			{
-				Name:     "__Secure-next-auth.session-token",
-				Value:    token,
-				Domain:   ".openai.com",
-				Path:     "/",
-				HTTPOnly: true,
-				Secure:   true,
-				SameSite: proto.NetworkCookieSameSiteLax,
-			},
-		})
+	if len(cookies) > 0 {
+		var cookieParams []*proto.NetworkCookieParam
+		for name, val := range cookies {
+			for _, domain := range []string{".chatgpt.com", ".openai.com"} {
+				cookieParams = append(cookieParams, &proto.NetworkCookieParam{
+					Name:     name,
+					Value:    val,
+					Domain:   domain,
+					Path:     "/",
+					HTTPOnly: true,
+					Secure:   true,
+					SameSite: proto.NetworkCookieSameSiteLax,
+				})
+			}
+		}
+		_ = page.SetCookies(cookieParams)
 	}
 
 	return &BrowserInstance{

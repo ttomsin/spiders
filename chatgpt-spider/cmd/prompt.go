@@ -61,17 +61,37 @@ var promptCmd = &cobra.Command{
 		var responseText string
 		var convID string
 
-		select {
-		case resp := <-itc.ResponseChannel():
-			responseText = resp
-			_, convID = itc.GetLastResponse()
-		case <-time.After(45 * time.Second):
-			// Fallback to DOM detection
-			domText, domErr := conversation.WaitForCompletion(page, 30*time.Second)
-			if domErr != nil {
-				return fmt.Errorf("response timeout: %w", domErr)
+		// Race SSE interceptor and live DOM watcher so we return the instant it finishes
+		respCh := make(chan string, 1)
+
+		// Goroutine 1: Network interceptor
+		go func() {
+			select {
+			case resp := <-itc.ResponseChannel():
+				select {
+				case respCh <- resp:
+				default:
+				}
+			case <-time.After(60 * time.Second):
 			}
-			responseText = domText
+		}()
+
+		// Goroutine 2: Active DOM completion watcher
+		go func() {
+			if domText, err := conversation.WaitForCompletion(page, 45*time.Second); err == nil && domText != "" {
+				select {
+				case respCh <- domText:
+				default:
+				}
+			}
+		}()
+
+		select {
+		case res := <-respCh:
+			responseText = res
+			_, convID = itc.GetLastResponse()
+		case <-time.After(60 * time.Second):
+			return fmt.Errorf("response timeout: ChatGPT took longer than 60s to finish responding")
 		}
 
 		fmt.Printf("%s\n\n", green("━━━ ChatGPT Response ━━━"))

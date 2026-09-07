@@ -90,17 +90,34 @@ var batchCmd = &cobra.Command{
 			var responseText string
 			var convID string
 
+			respCh := make(chan string, 1)
+			go func() {
+				select {
+				case resp := <-itc.ResponseChannel():
+					select {
+					case respCh <- resp:
+					default:
+					}
+				case <-time.After(60 * time.Second):
+				}
+			}()
+
+			go func() {
+				if domText, err := conversation.WaitForCompletion(page, 45*time.Second); err == nil && domText != "" {
+					select {
+					case respCh <- domText:
+					default:
+					}
+				}
+			}()
+
 			select {
-			case resp := <-itc.ResponseChannel():
-				responseText = resp
+			case res := <-respCh:
+				responseText = res
 				_, convID = itc.GetLastResponse()
 			case <-time.After(60 * time.Second):
-				domText, domErr := conversation.WaitForCompletion(page, 30*time.Second)
-				if domErr != nil {
-					fmt.Printf("%s\n", color.RedString("Timeout waiting for response: %v", domErr))
-					continue
-				}
-				responseText = domText
+				fmt.Printf("%s\n", color.RedString("Timeout waiting for response"))
+				continue
 			}
 
 			fmt.Printf("%s\n", green("Response captured (%d characters)", len(responseText)))

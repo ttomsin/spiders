@@ -16,8 +16,9 @@ import (
 )
 
 type StoredCredentials struct {
-	EncryptedSessionToken string `json:"encrypted_session_token,omitempty"`
-	CreatedAt             string `json:"created_at,omitempty"`
+	EncryptedSessionToken string            `json:"encrypted_session_token,omitempty"`
+	Tokens                map[string]string `json:"tokens,omitempty"` // map cookie name -> encrypted token
+	CreatedAt             string            `json:"created_at,omitempty"`
 }
 
 // GetBaseDir returns ~/.chatgpt-spider
@@ -118,7 +119,74 @@ func decrypt(cipherBase64 string) (string, error) {
 	return string(plainText), nil
 }
 
-// SaveSessionToken securely saves the __Secure-next-auth.session-token
+// SaveSessionCookies saves a map of cookie name -> value (e.g. .0 and .1)
+func SaveSessionCookies(cookies map[string]string) error {
+	encMap := make(map[string]string)
+	for k, v := range cookies {
+		trimmed := strings.TrimSpace(v)
+		if trimmed != "" {
+			enc, err := encrypt(trimmed)
+			if err != nil {
+				return err
+			}
+			encMap[k] = enc
+		}
+	}
+
+	creds := StoredCredentials{
+		Tokens: encMap,
+	}
+
+	path, err := getStoragePath()
+	if err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(creds, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0600)
+}
+
+// GetSessionCookies returns all decrypted cookie name -> value pairs
+func GetSessionCookies() (map[string]string, error) {
+	path, err := getStoragePath()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var creds StoredCredentials
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]string)
+	if len(creds.Tokens) > 0 {
+		for k, enc := range creds.Tokens {
+			if dec, err := decrypt(enc); err == nil {
+				result[k] = dec
+			}
+		}
+	} else if creds.EncryptedSessionToken != "" {
+		if dec, err := decrypt(creds.EncryptedSessionToken); err == nil {
+			result["__Secure-next-auth.session-token"] = dec
+		}
+	}
+
+	return result, nil
+}
+
+// SaveSessionToken securely saves the __Secure-next-auth.session-token (or chunked cookies)
 func SaveSessionToken(token string) error {
 	trimmed := strings.TrimSpace(token)
 	if trimmed == "" {
@@ -149,29 +217,23 @@ func SaveSessionToken(token string) error {
 
 // GetSessionToken returns the decrypted session token, if stored
 func GetSessionToken() (string, error) {
-	path, err := getStoragePath()
+	cookies, err := GetSessionCookies()
 	if err != nil {
 		return "", err
 	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
-
-	var creds StoredCredentials
-	if err := json.Unmarshal(data, &creds); err != nil {
-		return "", err
-	}
-
-	if creds.EncryptedSessionToken == "" {
+	if len(cookies) == 0 {
 		return "", nil
 	}
-
-	return decrypt(creds.EncryptedSessionToken)
+	if tok, ok := cookies["__Secure-next-auth.session-token"]; ok {
+		return tok, nil
+	}
+	if tok0, ok := cookies["__Secure-next-auth.session-token.0"]; ok {
+		return tok0, nil
+	}
+	for _, v := range cookies {
+		return v, nil
+	}
+	return "", nil
 }
 
 // ClearCredentials removes stored credentials

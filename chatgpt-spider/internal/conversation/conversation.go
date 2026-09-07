@@ -77,25 +77,47 @@ func SendPrompt(page *rod.Page, promptText string) error {
 	return page.KeyActions().Press(input.Enter).Do()
 }
 
-// WaitForCompletion polls the DOM as a fallback to detect when response generation finishes
+// WaitForCompletion polls the DOM to detect when response generation finishes and returns immediately
 func WaitForCompletion(page *rod.Page, maxWait time.Duration) (string, error) {
 	deadline := time.Now().Add(maxWait)
 
-	time.Sleep(1500 * time.Millisecond)
+	// Wait briefly for streaming indicator or first tokens to appear
+	time.Sleep(500 * time.Millisecond)
+
+	var lastObservedText string
+	unchangedCount := 0
 
 	for time.Now().Before(deadline) {
-		stopBtn, _ := page.Timeout(500 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
-		if stopBtn == nil {
-			assistantMsg, err := page.Element("article [data-message-author-role='assistant'], div[data-message-author-role='assistant'], .markdown")
-			if err == nil && assistantMsg != nil {
-				text, _ := assistantMsg.Text()
-				if text != "" {
-					return text, nil
+		// Check if stop streaming button is visible
+		stopBtn, _ := page.Timeout(200 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
+		
+		// Find assistant response element
+		assistantMsg, err := page.Element("article [data-message-author-role='assistant'], div[data-message-author-role='assistant'], .markdown")
+		if err == nil && assistantMsg != nil {
+			text, _ := assistantMsg.Text()
+			trimmed := strings.TrimSpace(text)
+			if trimmed != "" {
+				if stopBtn == nil {
+					// Stop button gone and we have content - finished!
+					return trimmed, nil
+				}
+				if trimmed == lastObservedText {
+					unchangedCount++
+					if unchangedCount >= 4 { // stable for ~1.2 seconds without stop button
+						return trimmed, nil
+					}
+				} else {
+					lastObservedText = trimmed
+					unchangedCount = 0
 				}
 			}
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	if lastObservedText != "" {
+		return lastObservedText, nil
 	}
 
 	return "", fmt.Errorf("timeout waiting for response")
