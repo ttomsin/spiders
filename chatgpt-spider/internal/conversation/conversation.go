@@ -54,23 +54,42 @@ func SendPrompt(page *rod.Page, promptText string) error {
 		_ = inputElem.Input(promptText)
 	}
 
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
-	// Try clicking Send button
+	// Send button selectors in ChatGPT Web UI
 	sendButtonSelectors := []string{
 		"button[data-testid='send-button']",
 		"button[aria-label='Send prompt']",
 		"button[aria-label='Send message']",
 	}
 
-	for _, btnSel := range sendButtonSelectors {
-		if btn, err := page.Timeout(1 * time.Second).Element(btnSel); err == nil && btn != nil {
-			disabled, _ := btn.Attribute("disabled")
-			if disabled == nil {
-				_ = btn.Click(proto.InputMouseButtonLeft, 1)
-				return nil
+	// Wait up to 30 seconds for any pasted text / document upload / attachment processing to complete
+	// While uploading, the Send button is disabled; once ready, it becomes enabled
+	deadline := time.Now().Add(30 * time.Second)
+	var activeSendBtn *rod.Element
+
+	for time.Now().Before(deadline) {
+		for _, btnSel := range sendButtonSelectors {
+			btn, err := page.Timeout(300 * time.Millisecond).Element(btnSel)
+			if err == nil && btn != nil {
+				disabled, _ := btn.Attribute("disabled")
+				ariaDisabled, _ := btn.Attribute("aria-disabled")
+				if disabled == nil && (ariaDisabled == nil || *ariaDisabled != "true") {
+					activeSendBtn = btn
+					break
+				}
 			}
 		}
+
+		if activeSendBtn != nil {
+			break
+		}
+
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	if activeSendBtn != nil {
+		return activeSendBtn.Click(proto.InputMouseButtonLeft, 1)
 	}
 
 	// Fallback to Enter key
