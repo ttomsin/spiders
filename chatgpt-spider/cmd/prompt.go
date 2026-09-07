@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fatih/color"
@@ -37,6 +40,14 @@ var promptCmd = &cobra.Command{
 			return err
 		}
 		defer inst.Close()
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-sigCh
+			_ = inst.Close()
+			os.Exit(0)
+		}()
 
 		page := inst.Page
 		itc, err := interceptor.NewInterceptor(page)

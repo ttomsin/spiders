@@ -26,6 +26,7 @@ type Options struct {
 type BrowserInstance struct {
 	Browser     *rod.Browser
 	Page        *rod.Page
+	launcher    *launcher.Launcher
 	tempDataDir string
 }
 
@@ -148,6 +149,7 @@ func Launch(opts Options) (*BrowserInstance, error) {
 	return &BrowserInstance{
 		Browser:     b,
 		Page:        page,
+		launcher:    l,
 		tempDataDir: tempDataDir,
 	}, nil
 }
@@ -157,6 +159,9 @@ func (bi *BrowserInstance) Close() error {
 	var err error
 	if bi.Browser != nil {
 		err = bi.Browser.Close()
+	}
+	if bi.launcher != nil {
+		bi.launcher.Kill()
 	}
 	if bi.tempDataDir != "" {
 		_ = os.RemoveAll(bi.tempDataDir)

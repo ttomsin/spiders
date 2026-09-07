@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fatih/color"
@@ -37,6 +39,16 @@ var chatCmd = &cobra.Command{
 			return err
 		}
 		defer inst.Close()
+
+		// Intercept Ctrl+C (SIGINT) to ensure Chromium is gracefully terminated
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-sigCh
+			fmt.Println(dim("\nExiting session..."))
+			_ = inst.Close()
+			os.Exit(0)
+		}()
 
 		page := inst.Page
 		itc, err := interceptor.NewInterceptor(page)
