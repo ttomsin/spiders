@@ -243,10 +243,41 @@ Inspect the turns of any conversation thread without sending a new message:
 ```
 
 ### 4. Batch Processing from File
-Given a file `prompts.txt` containing one prompt per line:
-```powershell
-.\chatgpt-spider.exe batch -i prompts.txt -o results.json --delay 3
+
+You can execute a list of prompts sequentially from a text file, with automatic delay between requests, and export the aggregated responses to JSON or Markdown.
+
+#### 1. Create a `prompts.txt` file:
+```text
+# General knowledge prompts
+Write a haiku about computers
+Explain photosynthesis in two sentences
+What is Moore's law?
+What is the speed of sound?
 ```
+*(Lines starting with `#` are treated as comments and ignored).*
+
+#### 2. Run the batch command:
+```powershell
+# Output all results to JSON with a 3-second delay between prompts
+.\chatgpt-spider.exe batch -i prompts.txt -o results.json --delay 3
+
+# Or export to formatted Markdown:
+.\chatgpt-spider.exe batch -i prompts.txt -o results.md -d 2
+
+# Stream each completed prompt directly to an external webhook:
+.\chatgpt-spider.exe batch -i prompts.txt --webhook-url "https://api.yourdomain.com/ingest"
+
+# Run in anonymous / guest mode without logging in:
+.\chatgpt-spider.exe batch -i prompts.txt -o results.json --anon
+```
+
+#### Batch Flags:
+- `-i, --input <file>`: *(Required)* Path to the text file containing prompts (one per line).
+- `-d, --delay <int>`: Delay in seconds between prompts to avoid rate limits (default: `3`).
+- `-o, --output <file>`: Destination file (`.json` or `.md`).
+- `--webhook-url <url>`: HTTP endpoint to POST each response turn as soon as it completes.
+- `--anon`: Run in temporary guest mode without cookies.
+
 
 ---
 
