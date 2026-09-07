@@ -90,6 +90,9 @@ var batchCmd = &cobra.Command{
 		for i, promptText := range prompts {
 			fmt.Printf("\n%s\n", cyan("━━━ Processing [%d/%d]: %s ━━━", i+1, len(prompts), promptText))
 
+			// Drain any stale buffered response before sending new prompt
+			itc.Drain()
+
 			if err := conversation.SendPrompt(page, promptText); err != nil {
 				fmt.Printf("%s\n", color.RedString("Error sending prompt: %v", err))
 				continue

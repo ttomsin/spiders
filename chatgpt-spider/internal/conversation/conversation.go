@@ -90,11 +90,13 @@ func WaitForCompletion(page *rod.Page, maxWait time.Duration) (string, error) {
 	for time.Now().Before(deadline) {
 		// Check if stop streaming button is visible
 		stopBtn, _ := page.Timeout(200 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
-		
-		// Find assistant response element
-		assistantMsg, err := page.Element("article [data-message-author-role='assistant'], div[data-message-author-role='assistant'], .markdown")
-		if err == nil && assistantMsg != nil {
-			text, _ := assistantMsg.Text()
+
+		// Find assistant response elements - always inspect the LAST assistant message on the page
+		assistantMsgs, err := page.Elements("article [data-message-author-role='assistant'], div[data-message-author-role='assistant'], .markdown")
+		if err == nil && len(assistantMsgs) > 0 {
+			// Grab the latest assistant message
+			lastElem := assistantMsgs[len(assistantMsgs)-1]
+			text, _ := lastElem.Text()
 			trimmed := strings.TrimSpace(text)
 			if trimmed != "" {
 				if stopBtn == nil {

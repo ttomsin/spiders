@@ -95,6 +95,10 @@ var chatCmd = &cobra.Command{
 				}
 				continue
 			}
+			if strings.EqualFold(input, "/open") || strings.EqualFold(input, "/load") {
+				fmt.Println(yellow("Usage: /open <session-id or url>"))
+				continue
+			}
 			if strings.HasPrefix(input, "/open ") || strings.HasPrefix(input, "/load ") {
 				parts := strings.SplitN(input, " ", 2)
 				if len(parts) == 2 && strings.TrimSpace(parts[1]) != "" {
@@ -108,6 +112,9 @@ var chatCmd = &cobra.Command{
 				}
 				continue
 			}
+
+			// Drain any stale buffered response before sending new prompt
+			itc.Drain()
 
 			if err := conversation.SendPrompt(page, input); err != nil {
 				fmt.Printf("%s\n", color.RedString("Error sending prompt: %v", err))

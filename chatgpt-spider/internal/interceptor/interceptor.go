@@ -69,6 +69,19 @@ func (itc *Interceptor) ResponseChannel() <-chan string {
 	return itc.responseCh
 }
 
+// Drain flushes any lingering responses from the channel before starting a new turn
+func (itc *Interceptor) Drain() {
+	itc.mu.Lock()
+	defer itc.mu.Unlock()
+	for {
+		select {
+		case <-itc.responseCh:
+		default:
+			return
+		}
+	}
+}
+
 // GetLastResponse returns the most recent captured assistant response
 func (itc *Interceptor) GetLastResponse() (string, string) {
 	itc.mu.Lock()
