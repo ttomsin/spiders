@@ -55,7 +55,25 @@ func Launch(opts Options) (*BrowserInstance, error) {
 		Leakless(false).
 		Headless(opts.Headless).
 		UserDataDir(userDataDir).
-		Devtools(opts.Debug)
+		Devtools(opts.Debug).
+		Set("disable-background-networking").
+		Set("disable-background-timer-throttling").
+		Set("disable-backgrounding-occluded-windows").
+		Set("disable-breakpad").
+		Set("disable-client-side-phishing-detection").
+		Set("disable-default-apps").
+		Set("disable-dev-shm-usage").
+		Set("disable-extensions").
+		Set("disable-features", "TranslateUI").
+		Set("disable-hang-monitor").
+		Set("disable-ipc-flooding-protection").
+		Set("disable-popup-blocking").
+		Set("disable-prompt-on-repost").
+		Set("disable-renderer-backgrounding").
+		Set("disable-sync").
+		Set("force-color-profile", "srgb").
+		Set("metrics-recording-only").
+		Set("no-first-run")
 
 	u, err := l.Launch()
 	if err != nil {
