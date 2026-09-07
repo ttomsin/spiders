@@ -178,24 +178,38 @@ When a user (or automated script) inputs very large text into ChatGPT (e.g., lon
    * The Send button is set to `disabled=""` and `aria-disabled="true"`.
    * Pressing the Enter key does nothing because form submission is gated by the upload state.
 3. **The Solution in `chatgpt-spider`**:
-   In `SendPrompt`, after injecting the prompt, the engine enters a resilient polling loop:
+   We do not use a short arbitrary static sleep (which fails if huge files or slow connections take 45s, 60s, or longer). Instead, `chatgpt-spider` implements a **dynamic upload progress state machine**:
+   * **Active Progress Detection (`isAttachmentUploading`)**: Continuously monitors the composer DOM for upload indicators (`[role='progressbar']`, `[class*='animate-spin']`, `div[class*='radial-progress']`, etc.). As long as an upload is actively running, the engine keeps waiting dynamically!
+   * **Error Interception (`checkAttachmentError`)**: Instantly detects and returns any rejection or failure banner (`upload-error`, `role='alert'`) rather than waiting blindly.
+   * **Stabilized Ready Gate (`getEnabledSendButton`)**: Requires 2 consecutive stabilized checks where the upload indicators are gone and the Send button has both `disabled == nil` and `aria-disabled != "true"` before clicking.
+   * **Context Cancellation**: Fully respects `ctx.Done()` so clients can abort anytime, while providing a generous default ceiling (5 minutes) for massive payloads.
+
    ```go
-   // Wait up to 30s for pasted text upload / document attachment to finish
-   for time.Now().Before(deadline) {
-       for _, btnSel := range sendButtonSelectors {
-           btn, _ := page.Timeout(300 * time.Millisecond).Element(btnSel)
-           if btn != nil {
-               disabled, _ := btn.Attribute("disabled")
-               ariaDisabled, _ := btn.Attribute("aria-disabled")
-               if disabled == nil && (ariaDisabled == nil || *ariaDisabled != "true") {
+   for {
+       select {
+       case <-ctx.Done():
+           return ctx.Err()
+       case <-timeoutCh:
+           return fmt.Errorf("timed out waiting for upload (max wait %v exceeded)", maxWait)
+       case <-ticker.C:
+           if errMsg := checkAttachmentError(page); errMsg != "" {
+               return fmt.Errorf("pasted document upload failed: %s", errMsg)
+           }
+           if isAttachmentUploading(page) {
+               consecutiveReadyChecks = 0
+               continue // Actively uploading: keep waiting as long as it takes!
+           }
+           if btn := getEnabledSendButton(page); btn != nil {
+               consecutiveReadyChecks++
+               if consecutiveReadyChecks >= 2 {
                    return btn.Click(proto.InputMouseButtonLeft, 1)
                }
            }
        }
-       time.Sleep(250 * time.Millisecond)
    }
    ```
-   If the prompt is short, the button is immediately enabled and clicked in <300ms. If the prompt is large and triggers a "Pasted text" document upload, the engine safely waits until the upload finishes and the button becomes active before dispatching.
+   * Short prompts proceed in <500ms without delay.
+   * Large documents wait dynamically for the upload spinner to complete—whether it takes 5 seconds or 2 minutes.
 
 ---
 

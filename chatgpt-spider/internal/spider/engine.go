@@ -27,6 +27,7 @@ type PromptRequest struct {
 	ConversationID string
 	NewChat        bool
 	OnToken        func(delta string)
+	Timeout        time.Duration // Optional custom generation timeout (defaults to 5 minutes)
 }
 
 // PromptResponse defines the response from ChatGPT
@@ -111,12 +112,17 @@ func (e *Engine) Prompt(ctx context.Context, req PromptRequest) (*PromptResponse
 	// Count assistant messages in DOM before dispatching prompt
 	initialCount := conversation.CountAssistantMessages(page)
 
-	if err := conversation.SendPrompt(page, req.Prompt); err != nil {
+	if err := conversation.SendPrompt(ctx, page, req.Prompt); err != nil {
 		return nil, fmt.Errorf("error sending prompt: %w", err)
 	}
 
+	timeout := req.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+
 	// Stream live tokens through the DOM watcher
-	responseText, err := conversation.StreamCompletion(page, initialCount, 60*time.Second, req.OnToken)
+	responseText, err := conversation.StreamCompletion(ctx, page, initialCount, timeout, req.OnToken)
 	if err != nil {
 		return nil, err
 	}

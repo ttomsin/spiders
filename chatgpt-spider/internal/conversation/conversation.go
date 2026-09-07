@@ -1,17 +1,86 @@
 package conversation
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/proto"
 )
 
+// isAttachmentUploading checks if an attachment or pasted text card is actively loading/uploading
+func isAttachmentUploading(page *rod.Page) bool {
+	spinnerSelectors := []string{
+		"[role='progressbar']",
+		"[class*='animate-spin']",
+		"[class*='loading']",
+		"circle[class*='progress']",
+		"div[class*='radial-progress']",
+		"[data-testid*='upload-progress']",
+		"div[class*='attachment'] svg[class*='animate-spin']",
+	}
+
+	for _, sel := range spinnerSelectors {
+		elems, err := page.Elements(sel)
+		if err == nil && len(elems) > 0 {
+			for _, elem := range elems {
+				if visible, _ := elem.Visible(); visible {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// checkAttachmentError checks if any attachment in the composer encountered an error
+func checkAttachmentError(page *rod.Page) string {
+	errSelectors := []string{
+		"[data-testid*='upload-error']",
+		"div[class*='text-red'][role='alert']",
+		"div[class*='text-token-text-error']",
+	}
+
+	for _, sel := range errSelectors {
+		elem, err := page.Timeout(50 * time.Millisecond).Element(sel)
+		if err == nil && elem != nil {
+			if visible, _ := elem.Visible(); visible {
+				text, _ := elem.Text()
+				if text != "" {
+					return strings.TrimSpace(text)
+				}
+				return "attachment upload failed"
+			}
+		}
+	}
+	return ""
+}
+
+// getEnabledSendButton finds the Send button if it is currently enabled and clickable
+func getEnabledSendButton(page *rod.Page) *rod.Element {
+	sendButtonSelectors := []string{
+		"button[data-testid='send-button']",
+		"button[aria-label='Send prompt']",
+		"button[aria-label='Send message']",
+	}
+
+	for _, btnSel := range sendButtonSelectors {
+		btn, err := page.Timeout(100 * time.Millisecond).Element(btnSel)
+		if err == nil && btn != nil {
+			disabled, _ := btn.Attribute("disabled")
+			ariaDisabled, _ := btn.Attribute("aria-disabled")
+			if disabled == nil && (ariaDisabled == nil || *ariaDisabled != "true") {
+				return btn
+			}
+		}
+	}
+	return nil
+}
+
 // SendPrompt enters the prompt into ChatGPT and triggers transmission
-func SendPrompt(page *rod.Page, promptText string) error {
+func SendPrompt(ctx context.Context, page *rod.Page, promptText string) error {
 	selectors := []string{
 		"#prompt-textarea",
 		"div[contenteditable='true']",
@@ -54,46 +123,55 @@ func SendPrompt(page *rod.Page, promptText string) error {
 		_ = inputElem.Input(promptText)
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	// Give ChatGPT event handlers time to capture the paste and mount any document/attachment cards
+	time.Sleep(400 * time.Millisecond)
 
-	// Send button selectors in ChatGPT Web UI
-	sendButtonSelectors := []string{
-		"button[data-testid='send-button']",
-		"button[aria-label='Send prompt']",
-		"button[aria-label='Send message']",
+	// Dynamically wait for any active uploads/conversions to finish
+	// We monitor actual progress indicators rather than relying on a small static sleep!
+	maxWait := 5 * time.Minute
+	if deadline, ok := ctx.Deadline(); ok {
+		if rem := time.Until(deadline); rem > 0 && rem < maxWait {
+			maxWait = rem
+		}
 	}
 
-	// Wait up to 30 seconds for any pasted text / document upload / attachment processing to complete
-	// While uploading, the Send button is disabled; once ready, it becomes enabled
-	deadline := time.Now().Add(30 * time.Second)
-	var activeSendBtn *rod.Element
+	timeoutCh := time.After(maxWait)
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
 
-	for time.Now().Before(deadline) {
-		for _, btnSel := range sendButtonSelectors {
-			btn, err := page.Timeout(300 * time.Millisecond).Element(btnSel)
-			if err == nil && btn != nil {
-				disabled, _ := btn.Attribute("disabled")
-				ariaDisabled, _ := btn.Attribute("aria-disabled")
-				if disabled == nil && (ariaDisabled == nil || *ariaDisabled != "true") {
-					activeSendBtn = btn
-					break
+	consecutiveReadyChecks := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeoutCh:
+			return fmt.Errorf("timed out waiting for attachment / pasted text upload to complete (max wait %v exceeded)", maxWait)
+		case <-ticker.C:
+			// 1. Check for upload errors
+			if errMsg := checkAttachmentError(page); errMsg != "" {
+				return fmt.Errorf("pasted document upload failed: %s", errMsg)
+			}
+
+			// 2. Check if attachment is actively uploading / processing
+			if isAttachmentUploading(page) {
+				consecutiveReadyChecks = 0
+				continue
+			}
+
+			// 3. If no active upload, check if Send button is enabled
+			btn := getEnabledSendButton(page)
+			if btn != nil {
+				consecutiveReadyChecks++
+				// Require 2 consecutive checks (~400ms) to ensure DOM has stabilized
+				if consecutiveReadyChecks >= 2 {
+					return btn.Click(proto.InputMouseButtonLeft, 1)
 				}
+			} else {
+				consecutiveReadyChecks = 0
 			}
 		}
-
-		if activeSendBtn != nil {
-			break
-		}
-
-		time.Sleep(250 * time.Millisecond)
 	}
-
-	if activeSendBtn != nil {
-		return activeSendBtn.Click(proto.InputMouseButtonLeft, 1)
-	}
-
-	// Fallback to Enter key
-	return page.KeyActions().Press(input.Enter).Do()
 }
 
 // getAssistantElements returns all assistant message articles currently in the DOM
@@ -131,17 +209,26 @@ func CountAssistantMessages(page *rod.Page) int {
 }
 
 // StreamCompletion polls the DOM and invokes onDelta with each newly rendered token chunk
-func StreamCompletion(page *rod.Page, initialCount int, maxWait time.Duration, onDelta func(delta string)) (string, error) {
+func StreamCompletion(ctx context.Context, page *rod.Page, initialCount int, maxWait time.Duration, onDelta func(delta string)) (string, error) {
+	if maxWait <= 0 {
+		maxWait = 5 * time.Minute
+	}
 	deadline := time.Now().Add(maxWait)
 
 	var lastObservedText string
 	unchangedCount := 0
 	hasSeenStreaming := false
 
-	// Give ChatGPT up to 12s to begin generating
-	startDeadline := time.Now().Add(12 * time.Second)
+	// Give ChatGPT up to 15s to begin generating
+	startDeadline := time.Now().Add(15 * time.Second)
 
 	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
 		stopBtn, _ := page.Timeout(100 * time.Millisecond).Element("button[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label='Stop generating']")
 		if stopBtn != nil {
 			hasSeenStreaming = true
@@ -202,8 +289,8 @@ func StreamCompletion(page *rod.Page, initialCount int, maxWait time.Duration, o
 }
 
 // WaitForCompletion polls the DOM to detect when response generation finishes and returns immediately
-func WaitForCompletion(page *rod.Page, initialCount int, maxWait time.Duration) (string, error) {
-	return StreamCompletion(page, initialCount, maxWait, nil)
+func WaitForCompletion(ctx context.Context, page *rod.Page, initialCount int, maxWait time.Duration) (string, error) {
+	return StreamCompletion(ctx, page, initialCount, maxWait, nil)
 }
 
 // NewChat triggers a fresh conversation tab
