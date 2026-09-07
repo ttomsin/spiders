@@ -25,7 +25,7 @@ var chatCmd = &cobra.Command{
 		dim := color.New(color.FgHiBlack).SprintfFunc()
 
 		fmt.Println(cyan("Starting interactive ChatGPT session..."))
-		fmt.Println(dim("Commands: '/new' to start a new chat, 'exit' or 'quit' to conclude.\n"))
+		fmt.Println(dim("Commands: '/new' to start new, '/open <id>' to switch conversation, 'exit' to quit.\n"))
 
 		inst, err := browser.Launch(browser.Options{
 			Headless:     headless,
@@ -45,12 +45,19 @@ var chatCmd = &cobra.Command{
 		}
 		defer itc.Stop()
 
-		fmt.Println(yellow("Connecting to ChatGPT..."))
-		if err := page.Navigate("https://chatgpt.com"); err != nil {
-			return err
+		if chatSessionID != "" {
+			fmt.Printf("%s\n", yellow("Connecting and loading conversation %s...", chatSessionID))
+			if err := conversation.OpenConversation(page, chatSessionID); err != nil {
+				return err
+			}
+		} else {
+			fmt.Println(yellow("Connecting to ChatGPT..."))
+			if err := page.Navigate("https://chatgpt.com"); err != nil {
+				return err
+			}
+			_ = page.WaitLoad()
+			time.Sleep(3 * time.Second)
 		}
-		_ = page.WaitLoad()
-		time.Sleep(3 * time.Second)
 
 		var turns []exporter.Turn
 		scanner := bufio.NewScanner(os.Stdin)
@@ -73,6 +80,19 @@ var chatCmd = &cobra.Command{
 					fmt.Printf("%s\n", color.YellowString("Notice: could not start new chat: %v", err))
 				} else {
 					fmt.Println(green("✓ Fresh conversation thread ready."))
+				}
+				continue
+			}
+			if strings.HasPrefix(input, "/open ") || strings.HasPrefix(input, "/load ") {
+				parts := strings.SplitN(input, " ", 2)
+				if len(parts) == 2 && strings.TrimSpace(parts[1]) != "" {
+					targetID := strings.TrimSpace(parts[1])
+					fmt.Printf("%s\n", yellow("Switching to conversation %s...", targetID))
+					if err := conversation.OpenConversation(page, targetID); err != nil {
+						fmt.Printf("%s\n", color.RedString("Error switching conversation: %v", err))
+					} else {
+						fmt.Println(green("✓ Switched to conversation %s", targetID))
+					}
 				}
 				continue
 			}

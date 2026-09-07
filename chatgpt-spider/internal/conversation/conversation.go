@@ -140,11 +140,34 @@ func NewChat(page *rod.Page) error {
 		}
 	}
 
-	// Direct navigation fallback
+// Direct navigation fallback
 	if err := page.Navigate("https://chatgpt.com"); err != nil {
 		return err
 	}
 	_ = page.WaitLoad()
 	time.Sleep(2 * time.Second)
+	return nil
+}
+
+// OpenConversation navigates to an existing conversation thread by ID or URL
+func OpenConversation(page *rod.Page, sessionIDOrURL string) error {
+	raw := strings.TrimSpace(sessionIDOrURL)
+	if raw == "" {
+		return nil
+	}
+
+	targetURL := raw
+	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
+		// Clean ID if path is passed like "/c/xxx"
+		cleanID := strings.TrimPrefix(raw, "/")
+		cleanID = strings.TrimPrefix(cleanID, "c/")
+		targetURL = fmt.Sprintf("https://chatgpt.com/c/%s", cleanID)
+	}
+
+	if err := page.Navigate(targetURL); err != nil {
+		return fmt.Errorf("failed to navigate to conversation %s: %w", targetURL, err)
+	}
+	_ = page.WaitLoad()
+	time.Sleep(3 * time.Second)
 	return nil
 }

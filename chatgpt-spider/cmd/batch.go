@@ -72,11 +72,18 @@ var batchCmd = &cobra.Command{
 		}
 		defer itc.Stop()
 
-		if err := page.Navigate("https://chatgpt.com"); err != nil {
-			return err
+		if chatSessionID != "" {
+			fmt.Printf("%s\n", yellow("Resuming conversation: %s...", chatSessionID))
+			if err := conversation.OpenConversation(page, chatSessionID); err != nil {
+				return err
+			}
+		} else {
+			if err := page.Navigate("https://chatgpt.com"); err != nil {
+				return err
+			}
+			_ = page.WaitLoad()
+			time.Sleep(3 * time.Second)
 		}
-		_ = page.WaitLoad()
-		time.Sleep(3 * time.Second)
 
 		var turns []exporter.Turn
 

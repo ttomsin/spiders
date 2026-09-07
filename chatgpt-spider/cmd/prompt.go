@@ -45,17 +45,24 @@ var promptCmd = &cobra.Command{
 		}
 		defer itc.Stop()
 
-		fmt.Printf("%s\n", yellow("Navigating to ChatGPT..."))
-		if err := page.Navigate("https://chatgpt.com"); err != nil {
-			return fmt.Errorf("navigation error: %w", err)
-		}
-		_ = page.WaitLoad()
-		time.Sleep(3 * time.Second)
+		if chatSessionID != "" {
+			fmt.Printf("%s\n", yellow("Resuming conversation: %s...", chatSessionID))
+			if err := conversation.OpenConversation(page, chatSessionID); err != nil {
+				return err
+			}
+		} else {
+			fmt.Printf("%s\n", yellow("Navigating to ChatGPT..."))
+			if err := page.Navigate("https://chatgpt.com"); err != nil {
+				return fmt.Errorf("navigation error: %w", err)
+			}
+			_ = page.WaitLoad()
+			time.Sleep(3 * time.Second)
 
-		if newChat {
-			fmt.Printf("%s\n", yellow("Starting new chat thread..."))
-			if err := conversation.NewChat(page); err != nil {
-				fmt.Printf("%s\n", color.YellowString("Notice: new chat trigger error: %v", err))
+			if newChat {
+				fmt.Printf("%s\n", yellow("Starting new chat thread..."))
+				if err := conversation.NewChat(page); err != nil {
+					fmt.Printf("%s\n", color.YellowString("Notice: new chat trigger error: %v", err))
+				}
 			}
 		}
 

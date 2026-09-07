@@ -74,11 +74,21 @@ Chrome will open to ChatGPT. Complete your login once, and your session is saved
 .\chatgpt-spider.exe prompt "Start a fresh topic on architecture" --new-chat
 ```
 
+### Resume an Existing Conversation Thread
+You can continue an existing conversation by passing its UUID or full URL:
+```powershell
+.\chatgpt-spider.exe prompt "Can you explain that last point further?" --chat-session-id "67c9b2e1-4567-89ab-cdef-0123456789ab"
+```
+Or with full URL:
+```powershell
+.\chatgpt-spider.exe prompt "Continue where we left off" --chat-session-id "https://chatgpt.com/c/67c9b2e1-4567-89ab-cdef-0123456789ab"
+```
+
 ### Interactive Terminal Chat
 ```powershell
 .\chatgpt-spider.exe chat -o conversation.json
 ```
-*(In chat mode, type `/new` to start a fresh conversation thread, or `exit` to quit).*
+*(In chat mode, type `/new` to start fresh, `/open <id>` to switch conversation threads, or `exit` to quit).*
 
 ### Batch Prompt File Execution
 Given a `prompts.txt`:

@@ -9,13 +9,14 @@ import (
 )
 
 var (
-	headless     bool
-	debug        bool
-	anon         bool
-	newChat      bool
-	sessionToken string
-	webhookURL   string
-	outputFile   string
+	headless      bool
+	debug         bool
+	anon          bool
+	newChat       bool
+	chatSessionID string
+	sessionToken  string
+	webhookURL    string
+	outputFile    string
 )
 
 var RootCmd = &cobra.Command{
@@ -37,6 +38,7 @@ func init() {
 	RootCmd.PersistentFlags().BoolVar(&headless, "headless", true, "Run browser in headless mode (default true, set --headless=false to view browser)")
 	RootCmd.PersistentFlags().BoolVar(&anon, "anon", false, "Run in anonymous / guest mode without using saved credentials or profile")
 	RootCmd.PersistentFlags().BoolVar(&newChat, "new-chat", false, "Start a fresh conversation thread before sending prompt")
+	RootCmd.PersistentFlags().StringVar(&chatSessionID, "chat-session-id", "", "Resume a specific existing conversation by ID or URL (e.g., 67c9b2e1-...)")
 	RootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Keep browser inspector / devtools open")
 	RootCmd.PersistentFlags().StringVarP(&sessionToken, "session-token", "t", "", "ChatGPT __Secure-next-auth.session-token cookie")
 	RootCmd.PersistentFlags().StringVar(&webhookURL, "webhook-url", "", "Custom HTTP webhook endpoint to dispatch conversation turns")
