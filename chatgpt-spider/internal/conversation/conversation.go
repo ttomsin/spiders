@@ -79,6 +79,32 @@ func getEnabledSendButton(page *rod.Page) *rod.Element {
 	return nil
 }
 
+// WaitUntilReady dynamically waits for ChatGPT prompt textarea to become interactive without static sleeps
+func WaitUntilReady(page *rod.Page, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	selectors := []string{
+		"#prompt-textarea",
+		"div[contenteditable='true']",
+		"textarea[placeholder*='Message']",
+	}
+
+	for time.Now().Before(deadline) {
+		for _, sel := range selectors {
+			elem, err := page.Timeout(100 * time.Millisecond).Element(sel)
+			if err == nil && elem != nil {
+				if vis, _ := elem.Visible(); vis {
+					return nil
+				}
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timed out waiting for ChatGPT prompt input area to become ready")
+}
+
 // SendPrompt enters the prompt (and optional attachment text) into ChatGPT and triggers transmission
 func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachmentText string) error {
 	selectors := []string{
@@ -92,7 +118,7 @@ func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachme
 	var inputElem *rod.Element
 
 	for _, sel := range selectors {
-		elem, findErr := page.Timeout(2 * time.Second).Element(sel)
+		elem, findErr := page.Timeout(1 * time.Second).Element(sel)
 		if findErr == nil && elem != nil {
 			inputElem = elem
 			break
@@ -121,7 +147,7 @@ func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachme
 		}`
 		_, _ = inputElem.Eval(pasteJS, attachmentText)
 		// Give ChatGPT time to convert to document pill card
-		time.Sleep(600 * time.Millisecond)
+		time.Sleep(350 * time.Millisecond)
 	}
 
 	// 2. Now insert the user prompt text (e.g. "look into this" or analysis instruction) into the textarea
@@ -143,11 +169,7 @@ func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachme
 		return fmt.Errorf("empty prompt")
 	}
 
-	// Give ChatGPT event handlers time to capture input and update UI state
-	time.Sleep(400 * time.Millisecond)
-
-	// Dynamically wait for any active uploads/conversions to finish
-	// We monitor actual progress indicators rather than relying on a small static sleep!
+	// Dynamic wait for any active uploads/conversions to finish
 	maxWait := 5 * time.Minute
 	if deadline, ok := ctx.Deadline(); ok {
 		if rem := time.Until(deadline); rem > 0 && rem < maxWait {
@@ -156,7 +178,7 @@ func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachme
 	}
 
 	timeoutCh := time.After(maxWait)
-	ticker := time.NewTicker(200 * time.Millisecond)
+	ticker := time.NewTicker(80 * time.Millisecond)
 	defer ticker.Stop()
 
 	consecutiveReadyChecks := 0
@@ -183,8 +205,12 @@ func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachme
 			btn := getEnabledSendButton(page)
 			if btn != nil {
 				consecutiveReadyChecks++
-				// Require 2 consecutive checks (~400ms) to ensure DOM has stabilized
-				if consecutiveReadyChecks >= 2 {
+				// If no file attachment, fire immediately; if attachment was present, wait 2 polls (~160ms) for stability
+				targetChecks := 1
+				if attachmentText != "" {
+					targetChecks = 2
+				}
+				if consecutiveReadyChecks >= targetChecks {
 					return btn.Click(proto.InputMouseButtonLeft, 1)
 				}
 			} else {
@@ -309,7 +335,7 @@ func StreamCompletion(ctx context.Context, page *rod.Page, initialCount int, max
 			return "", fmt.Errorf("timeout waiting for assistant to begin generating")
 		}
 
-		time.Sleep(120 * time.Millisecond)
+		time.Sleep(60 * time.Millisecond)
 	}
 
 	if lastObservedText != "" {
@@ -346,7 +372,7 @@ func NewChat(page *rod.Page) error {
 		return err
 	}
 	_ = page.WaitLoad()
-	time.Sleep(2 * time.Second)
+	_ = WaitUntilReady(page, 5*time.Second)
 	return nil
 }
 
@@ -369,7 +395,7 @@ func OpenConversation(page *rod.Page, sessionIDOrURL string) error {
 		return fmt.Errorf("failed to navigate to conversation %s: %w", targetURL, err)
 	}
 	_ = page.WaitLoad()
-	time.Sleep(3 * time.Second)
+	_ = WaitUntilReady(page, 6*time.Second)
 	return nil
 }
 

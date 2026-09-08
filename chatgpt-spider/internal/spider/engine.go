@@ -91,8 +91,7 @@ func (e *Engine) Initialize(initialConvID string) error {
 		return err
 	}
 	_ = page.WaitLoad()
-	time.Sleep(3 * time.Second)
-	return nil
+	return conversation.WaitUntilReady(page, 6*time.Second)
 }
 
 // Prompt sends a message and returns the response, invoking onToken live as tokens arrive
