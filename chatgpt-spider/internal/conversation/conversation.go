@@ -72,7 +72,7 @@ func getEnabledSendButton(page *rod.Page) *rod.Element {
 			disabled, _ := btn.Attribute("disabled")
 			ariaDisabled, _ := btn.Attribute("aria-disabled")
 			if disabled == nil && (ariaDisabled == nil || *ariaDisabled != "true") {
-				return btn
+				return btn.CancelTimeout()
 			}
 		}
 	}
@@ -120,7 +120,7 @@ func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachme
 	for _, sel := range selectors {
 		elem, findErr := page.Timeout(1 * time.Second).Element(sel)
 		if findErr == nil && elem != nil {
-			inputElem = elem
+			inputElem = elem.CancelTimeout()
 			break
 		}
 	}
@@ -157,7 +157,10 @@ func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachme
 		if isEditable != nil && *isEditable == "true" {
 			insertJS := `(text) => {
 				this.focus();
+				document.execCommand('selectAll', false, null);
 				document.execCommand('insertText', false, text);
+				this.dispatchEvent(new Event('input', { bubbles: true }));
+				this.dispatchEvent(new Event('change', { bubbles: true }));
 			}`
 			if _, jsErr := inputElem.Eval(insertJS, promptText); jsErr != nil {
 				_ = inputElem.Input(promptText)
@@ -211,7 +214,7 @@ func SendPrompt(ctx context.Context, page *rod.Page, promptText string, attachme
 					targetChecks = 2
 				}
 				if consecutiveReadyChecks >= targetChecks {
-					return btn.Click(proto.InputMouseButtonLeft, 1)
+					return btn.Timeout(5 * time.Second).Click(proto.InputMouseButtonLeft, 1)
 				}
 			} else {
 				consecutiveReadyChecks = 0
@@ -352,28 +355,33 @@ func WaitForCompletion(ctx context.Context, page *rod.Page, initialCount int, ma
 
 // NewChat triggers a fresh conversation tab
 func NewChat(page *rod.Page) error {
-	// Try clicking the "New chat" button in the sidebar or header
+	info, _ := page.Info()
+	// If already on the base chat page without an active conversation, just ensure ready
+	if info != nil && !strings.Contains(info.URL, "/c/") && CountAssistantMessages(page) == 0 {
+		return WaitUntilReady(page, 5*time.Second)
+	}
+
 	newChatSelectors := []string{
-		"a[href='/']",
-		"button[aria-label='New chat']",
 		"a[data-testid='navigation-item-new-chat']",
+		"button[aria-label='New chat']",
+		"a[href='/']",
 	}
 
 	for _, sel := range newChatSelectors {
 		if btn, err := page.Timeout(1 * time.Second).Element(sel); err == nil && btn != nil {
-			_ = btn.Click(proto.InputMouseButtonLeft, 1)
-			time.Sleep(1 * time.Second)
+			_ = btn.CancelTimeout().Click(proto.InputMouseButtonLeft, 1)
+			_ = WaitUntilReady(page, 5*time.Second)
+			time.Sleep(300 * time.Millisecond)
 			return nil
 		}
 	}
 
-// Direct navigation fallback
+	// Direct navigation fallback
 	if err := page.Navigate("https://chatgpt.com"); err != nil {
 		return err
 	}
 	_ = page.WaitLoad()
-	_ = WaitUntilReady(page, 5*time.Second)
-	return nil
+	return WaitUntilReady(page, 5*time.Second)
 }
 
 // OpenConversation navigates to an existing conversation thread by ID or URL
@@ -428,19 +436,31 @@ func DeleteConversation(page *rod.Page, convID string) error {
 
 	deleteJS := `async (id) => {
 		try {
+			let authHeader = {};
+			try {
+				const sRes = await fetch('/api/auth/session');
+				if (sRes.ok) {
+					const sData = await sRes.json();
+					if (sData && sData.accessToken) {
+						authHeader['Authorization'] = 'Bearer ' + sData.accessToken;
+					}
+				}
+			} catch (e) {}
+
+			const headers = { 'Content-Type': 'application/json', ...authHeader };
+
 			// First attempt: Call ChatGPT's internal backend API directly from page context
 			const res = await fetch('/backend-api/conversation/' + id, {
 				method: 'PATCH',
-				headers: {
-					'Content-Type': 'application/json'
-				},
+				headers: headers,
 				body: JSON.stringify({ is_visible: false })
 			});
 			if (res.ok) return { success: true };
 			
 			// Fallback attempt: Standard DELETE method
 			const resDel = await fetch('/backend-api/conversation/' + id, {
-				method: 'DELETE'
+				method: 'DELETE',
+				headers: headers
 			});
 			if (resDel.ok) return { success: true };
 

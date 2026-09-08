@@ -112,7 +112,12 @@ func (e *Engine) Prompt(ctx context.Context, req PromptRequest) (*PromptResponse
 	}
 
 	// Count assistant messages in DOM before dispatching prompt
-	initialCount := conversation.CountAssistantMessages(page)
+	var initialCount int
+	if req.NewChat || (e.GetCurrentConversationID() == "" && req.ConversationID == "") {
+		initialCount = 0
+	} else {
+		initialCount = conversation.CountAssistantMessages(page)
+	}
 
 	effectivePrompt := req.Prompt
 	if req.Format != "" {

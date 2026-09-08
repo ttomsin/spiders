@@ -89,17 +89,15 @@ var promptCmd = &cobra.Command{
 			}
 		}
 
-		if newChat {
-			fmt.Printf("%s\n", yellow("Starting new chat thread..."))
-			_ = eng.NewChat()
-		}
 
 		fmt.Printf("%s\n\n", green("━━━ ChatGPT Response ━━━"))
 
 		resp, err := eng.Prompt(cmd.Context(), spider.PromptRequest{
-			Prompt:      promptText,
-			FileContent: fileContent,
-			Format:      formatSpec,
+			Prompt:         promptText,
+			FileContent:    fileContent,
+			Format:         formatSpec,
+			NewChat:        newChat || (chatSessionID == ""),
+			ConversationID: chatSessionID,
 			OnToken: func(token string) {
 				fmt.Print(token)
 			},
