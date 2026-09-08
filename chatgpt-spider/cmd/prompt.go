@@ -124,7 +124,11 @@ var promptCmd = &cobra.Command{
 		}
 
 		if outputFile != "" {
-			if strings.HasSuffix(strings.ToLower(outputFile), ".json") {
+			lower := strings.ToLower(outputFile)
+			// If user requested a specific format (e.g. json, csv) or file is csv/jsonl/xml/txt, save raw content
+			if formatSpec != "" || strings.HasSuffix(lower, ".csv") || strings.HasSuffix(lower, ".jsonl") || strings.HasSuffix(lower, ".xml") || strings.HasSuffix(lower, ".txt") {
+				_ = exporter.SaveRaw(outputFile, resp.Text)
+			} else if strings.HasSuffix(lower, ".json") {
 				_ = exporter.SaveJSON(outputFile, turns)
 			} else {
 				_ = exporter.SaveMarkdown(outputFile, turns)
@@ -135,6 +139,15 @@ var promptCmd = &cobra.Command{
 		if webhookURL != "" {
 			_ = exporter.SendWebhook(webhookURL, turns)
 			fmt.Printf("%s: %s\n", cyan("Dispatched response to webhook"), webhookURL)
+		}
+
+		if sessionDelete && resp.ConversationID != "" {
+			fmt.Printf("%s\n", yellow("Deleting session %s from ChatGPT account...", resp.ConversationID))
+			if delErr := eng.DeleteConversation(resp.ConversationID); delErr != nil {
+				fmt.Printf("%s: %v\n", color.RedString("Failed to delete session"), delErr)
+			} else {
+				fmt.Println(color.GreenString("✓ Session %s successfully deleted.", resp.ConversationID))
+			}
 		}
 
 		return nil

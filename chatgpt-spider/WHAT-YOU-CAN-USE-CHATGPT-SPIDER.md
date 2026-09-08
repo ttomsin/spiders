@@ -1,4 +1,4 @@
-﻿# What You Can Use chatgpt-spider For 🕷️
+# What You Can Use chatgpt-spider For 🕷️
 
 A guide to real-world applications, capabilities, and technical boundaries of **`chatgpt-spider`**—the native Go automation engine and OpenAI-compatible REST server for ChatGPT.
 
@@ -83,7 +83,13 @@ The engine captures and exposes the conversation UUID from ChatGPT's URL.
   ```
 - History inspection: Retrieve past turns programmatically via `--history` or `GET /v1/history`.
 
-### F. Webhook-Driven Background Automation & Batch Jobs
+### F. Ephemeral Single-Turn Workflows (`--session-delete`)
+When running automated scripts, testing code snippets, or querying confidential data:
+- Pass `--session-delete` to immediately wipe the conversation thread from your ChatGPT account sidebar the second the response completes.
+- Keeps your ChatGPT account sidebar 100% clean and uncluttered.
+- Supported in the interactive REPL (`/delete`), CLI (`--session-delete`), and REST server (`"session_delete": true`).
+
+### G. Webhook-Driven Background Automation & Batch Jobs
 - **Batch Processing**: Run a file containing 100 prompts in sequence with `-b prompts.txt -o results.json` with rate-limiting pauses.
 - **Webhook Dispatch**: Automatically dispatch responses to Slack, Discord, or an internal webhook endpoint upon completion (`--webhook https://my-webhook.com`).
 

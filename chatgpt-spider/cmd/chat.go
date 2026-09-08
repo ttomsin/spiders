@@ -81,6 +81,20 @@ var chatCmd = &cobra.Command{
 				}
 				continue
 			}
+			if strings.EqualFold(input, "/delete") || strings.EqualFold(input, "/rm") {
+				currentID := eng.GetCurrentConversationID()
+				if currentID == "" {
+					fmt.Println(yellow("No active conversation to delete."))
+				} else {
+					fmt.Printf("%s\n", yellow("Deleting conversation %s from ChatGPT account...", currentID))
+					if err := eng.DeleteConversation(currentID); err != nil {
+						fmt.Printf("%s: %v\n", color.RedString("Error deleting conversation"), err)
+					} else {
+						fmt.Println(green("✓ Conversation %s deleted.", currentID))
+					}
+				}
+				continue
+			}
 			if strings.EqualFold(input, "/history") {
 				hist, err := eng.GetHistory()
 				if err != nil || len(hist) == 0 {

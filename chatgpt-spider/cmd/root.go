@@ -19,6 +19,7 @@ var (
 	webhookURL    string
 	outputFile    string
 	formatSpec    string
+	sessionDelete bool
 )
 
 const AppVersion = "1.0.0"
@@ -89,6 +90,7 @@ func init() {
 	RootCmd.PersistentFlags().StringVar(&webhookURL, "webhook-url", "", "Custom HTTP webhook endpoint to dispatch conversation turns")
 	RootCmd.PersistentFlags().StringVarP(&outputFile, "output", "o", "", "Destination output file (.md or .json)")
 	RootCmd.PersistentFlags().StringVarP(&formatSpec, "format", "f", "", "Enforce response format (e.g. json, csv, xml, or custom schema)")
+	RootCmd.PersistentFlags().BoolVar(&sessionDelete, "session-delete", false, "Automatically delete the conversation thread from ChatGPT account upon completion")
 }
 
 func Execute() {

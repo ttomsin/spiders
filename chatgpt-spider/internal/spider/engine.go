@@ -171,6 +171,24 @@ func (e *Engine) NewChat() error {
 	return conversation.NewChat(e.inst.Page)
 }
 
+// DeleteConversation deletes a conversation by ID from the account and resets the session
+func (e *Engine) DeleteConversation(convID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	targetID := convID
+	if targetID == "" {
+		targetID = e.GetCurrentConversationID()
+	}
+	if targetID == "" {
+		return nil
+	}
+	err := conversation.DeleteConversation(e.inst.Page, targetID)
+	if e.GetCurrentConversationID() == targetID {
+		e.setConversationID("")
+	}
+	return err
+}
+
 // GetCurrentConversationID returns the current active conversation ID (non-blocking)
 func (e *Engine) GetCurrentConversationID() string {
 	e.convMu.RLock()

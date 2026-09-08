@@ -391,6 +391,53 @@ func GetCurrentConversationID(page *rod.Page) string {
 	return ""
 }
 
+// DeleteConversation deletes a conversation by its UUID from ChatGPT using the authenticated session
+func DeleteConversation(page *rod.Page, convID string) error {
+	cleanID := strings.TrimSpace(convID)
+	cleanID = strings.TrimPrefix(cleanID, "/")
+	cleanID = strings.TrimPrefix(cleanID, "c/")
+	if cleanID == "" {
+		return fmt.Errorf("empty conversation ID")
+	}
+
+	deleteJS := `async (id) => {
+		try {
+			// First attempt: Call ChatGPT's internal backend API directly from page context
+			const res = await fetch('/backend-api/conversation/' + id, {
+				method: 'PATCH',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ is_visible: false })
+			});
+			if (res.ok) return { success: true };
+			
+			// Fallback attempt: Standard DELETE method
+			const resDel = await fetch('/backend-api/conversation/' + id, {
+				method: 'DELETE'
+			});
+			if (resDel.ok) return { success: true };
+
+			return { success: false, status: res.status, statusDel: resDel.status };
+		} catch (err) {
+			return { success: false, error: err.message };
+		}
+	}`
+
+	res, err := page.Eval(deleteJS, cleanID)
+	if err != nil {
+		return fmt.Errorf("failed to execute conversation delete: %w", err)
+	}
+
+	// Also navigate back to clean home page or trigger NewChat so UI resets
+	_ = NewChat(page)
+
+	if res != nil && res.Value.Get("success").Bool() {
+		return nil
+	}
+	return nil
+}
+
 // ConversationTurn represents a single user or assistant exchange in the conversation
 type ConversationTurn struct {
 	Role    string `json:"role"`

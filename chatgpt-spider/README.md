@@ -238,6 +238,9 @@ Inside the interactive REPL:
 
 # Forward response to an external webhook
 .\chatgpt-spider.exe prompt "Generate weekly report" --webhook-url "https://api.yourdomain.com/ingest"
+
+# Ephemeral prompt (get response and automatically delete the thread from your ChatGPT account)
+.\chatgpt-spider.exe prompt "Analyze this secret error log" --session-delete
 ```
 
 ### 3. Fetch In-Conversation History

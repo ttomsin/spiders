@@ -57,6 +57,15 @@ func SaveJSON(filePath string, turns []Turn) error {
 	return os.WriteFile(filePath, data, 0644)
 }
 
+// SaveRaw writes the raw response directly to a file (ideal for datasets, CSV, JSONL, code)
+func SaveRaw(filePath string, content string) error {
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(filePath, []byte(content), 0644)
+}
+
 // SendWebhook dispatches conversation data to an external HTTP POST webhook endpoint
 func SendWebhook(webhookURL string, turns []Turn) error {
 	if webhookURL == "" || len(turns) == 0 {

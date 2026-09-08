@@ -33,6 +33,7 @@ type ChatCompletionRequest struct {
 	ConversationID string                  `json:"conversation_id,omitempty"`
 	Format         string                  `json:"format,omitempty"`
 	ResponseFormat *ResponseFormat         `json:"response_format,omitempty"`
+	SessionDelete  bool                    `json:"session_delete,omitempty"`
 }
 
 // ChatCompletionChoice is part of the non-streaming response
@@ -266,6 +267,10 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "data: %s\n\n", fData)
 		fmt.Fprintf(w, "data: [DONE]\n\n")
 		flusher.Flush()
+
+		if req.SessionDelete && resp.ConversationID != "" {
+			_ = s.engine.DeleteConversation(resp.ConversationID)
+		}
 		return
 	}
 
@@ -300,4 +305,8 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = json.NewEncoder(w).Encode(jsonResp)
+
+	if req.SessionDelete && resp.ConversationID != "" {
+		_ = s.engine.DeleteConversation(resp.ConversationID)
+	}
 }
