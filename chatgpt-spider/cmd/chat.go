@@ -41,8 +41,8 @@ var chatCmd = &cobra.Command{
 			fmt.Println(yellow("Connecting to ChatGPT..."))
 		}
 
-		if err := eng.Initialize(chatSessionID); err != nil {
-			return err
+		if err := eng.Initialize(chatSessionID, temporaryChat); err != nil {
+			return fmt.Errorf("failed to initialize ChatGPT: %w", err)
 		}
 
 		var turns []exporter.Turn

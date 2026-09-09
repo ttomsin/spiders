@@ -67,8 +67,8 @@ var batchCmd = &cobra.Command{
 			fmt.Printf("%s\n", yellow("Resuming conversation: %s...", chatSessionID))
 		}
 
-		if err := eng.Initialize(chatSessionID); err != nil {
-			return err
+		if err := eng.Initialize(chatSessionID, temporaryChat); err != nil {
+			return fmt.Errorf("failed to initialize ChatGPT: %w", err)
 		}
 
 		var turns []exporter.Turn

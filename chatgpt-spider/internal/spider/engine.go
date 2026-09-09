@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -31,6 +32,7 @@ type PromptRequest struct {
 	Format         string // e.g. "json", "csv", "xml", or custom schema
 	OnToken        func(delta string)
 	Timeout        time.Duration // Optional custom generation timeout (defaults to 5 minutes)
+	TemporaryChat  bool          // If true, forces ephemeral mode logic
 }
 
 // PromptResponse defines the response from ChatGPT
@@ -42,10 +44,12 @@ type PromptResponse struct {
 
 // Engine encapsulates the browser and automation lifecycle
 type Engine struct {
-	mu          sync.Mutex
-	convMu      sync.RWMutex
-	inst        *browser.BrowserInstance
-	currentConv string
+	mu            sync.Mutex
+	convMu        sync.RWMutex
+	inst          *browser.BrowserInstance
+	currentConv   string
+	tempTurnCount int
+	isTempChat    bool
 }
 
 // NewEngine creates and connects a new spider engine
@@ -77,7 +81,7 @@ func NewEngine(opts Options) (*Engine, error) {
 }
 
 // Initialize opens ChatGPT home or a specific conversation
-func (e *Engine) Initialize(initialConvID string) error {
+func (e *Engine) Initialize(initialConvID string, isTemporary bool) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -87,11 +91,22 @@ func (e *Engine) Initialize(initialConvID string) error {
 		return conversation.OpenConversation(page, initialConvID)
 	}
 
-	if err := page.Navigate("https://chatgpt.com"); err != nil {
-		return err
+	if isTemporary {
+		if err := conversation.OpenTemporaryChat(page); err != nil {
+			return err
+		}
+	} else {
+		if err := page.Navigate("https://chatgpt.com"); err != nil {
+			return err
+		}
 	}
+	
 	_ = page.WaitLoad()
-	return conversation.WaitUntilReady(page, 6*time.Second)
+	err := conversation.WaitUntilReady(page, 6*time.Second)
+	if err == nil {
+		conversation.InjectSSEInterceptor(page)
+	}
+	return err
 }
 
 // Prompt sends a message and returns the response, invoking onToken live as tokens arrive
@@ -101,9 +116,31 @@ func (e *Engine) Prompt(ctx context.Context, req PromptRequest) (*PromptResponse
 
 	page := e.inst.Page
 
-	if req.NewChat {
-		if err := conversation.NewChat(page); err == nil {
+	e.isTempChat = req.TemporaryChat
+	
+	// If the request has no ConversationID, it is a stateless API request.
+	// We MUST start a fresh chat to prevent duplicate history rendering on screen.
+	isStateless := req.ConversationID == ""
+	
+	if isStateless || req.NewChat {
+		if req.TemporaryChat {
+			// Always do a hard reload to clear the DOM screen for stateless requests
+			if info, _ := page.Info(); info != nil && strings.Contains(info.URL, "?temporary-chat=true") {
+				_ = page.Reload()
+				_ = page.WaitLoad()
+				conversation.DismissModals(page)
+				_ = conversation.WaitUntilReady(page, 5*time.Second)
+				conversation.InjectSSEInterceptor(page)
+			} else {
+				_ = conversation.OpenTemporaryChat(page)
+				conversation.InjectSSEInterceptor(page)
+			}
 			e.setConversationID("")
+			e.tempTurnCount = 0
+		} else {
+			if err := conversation.NewChat(page); err == nil {
+				e.setConversationID("")
+			}
 		}
 	} else if req.ConversationID != "" && req.ConversationID != e.GetCurrentConversationID() {
 		if err := conversation.OpenConversation(page, req.ConversationID); err == nil {
@@ -113,19 +150,24 @@ func (e *Engine) Prompt(ctx context.Context, req PromptRequest) (*PromptResponse
 
 	// Count assistant messages in DOM before dispatching prompt
 	var initialCount int
-	if req.NewChat || (e.GetCurrentConversationID() == "" && req.ConversationID == "") {
+	if isStateless || req.NewChat || (e.GetCurrentConversationID() == "" && req.ConversationID == "") {
 		initialCount = 0
 	} else {
 		initialCount = conversation.CountAssistantMessages(page)
 	}
 
 	effectivePrompt := req.Prompt
+
 	if req.Format != "" {
-		effectivePrompt = format.ApplyFormatConstraint(req.Prompt, req.Format)
+		effectivePrompt = format.ApplyFormatConstraint(effectivePrompt, req.Format)
 	}
 
 	if err := conversation.SendPrompt(ctx, page, effectivePrompt, req.FileContent); err != nil {
 		return nil, fmt.Errorf("error sending prompt: %w", err)
+	}
+
+	if req.TemporaryChat {
+		e.tempTurnCount++
 	}
 
 	timeout := req.Timeout

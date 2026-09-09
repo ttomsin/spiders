@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"chatgpt-spider/internal/spider"
@@ -11,8 +12,9 @@ import (
 
 // Server encapsulates the HTTP API server powered by spider.Engine
 type Server struct {
-	engine *spider.Engine
-	port   int
+	engine               *spider.Engine
+	port                 int
+	defaultTemporaryChat bool
 }
 
 // ChatCompletionMessage represents a role/content message in the OpenAI spec
@@ -34,6 +36,7 @@ type ChatCompletionRequest struct {
 	Format         string                  `json:"format,omitempty"`
 	ResponseFormat *ResponseFormat         `json:"response_format,omitempty"`
 	SessionDelete  bool                    `json:"session_delete,omitempty"`
+	TemporaryChat  bool                    `json:"temporary_chat,omitempty"`
 }
 
 // ChatCompletionChoice is part of the non-streaming response
@@ -77,10 +80,11 @@ type StreamChunk struct {
 }
 
 // NewServer creates a new API server
-func NewServer(engine *spider.Engine, port int) *Server {
+func NewServer(engine *spider.Engine, port int, defaultTemporaryChat bool) *Server {
 	return &Server{
-		engine: engine,
-		port:   port,
+		engine:               engine,
+		port:                 port,
+		defaultTemporaryChat: defaultTemporaryChat,
 	}
 }
 
@@ -128,6 +132,16 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Conversation-ID")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -135,26 +149,45 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	var req ChatCompletionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		fmt.Printf("[SERVER] Error decoding request: %v\n", err)
 		http.Error(w, fmt.Sprintf(`{"error": "invalid json: %s"}`, err.Error()), http.StatusBadRequest)
 		return
 	}
+
+	// Because JSON unmarshaling can't distinguish between false and missing for booleans without pointers,
+	// we assume the user wants the server default unless it was sent via the API.
+	// Since OpenAI spec has no temporary_chat, it will always be missing, so we safely apply the default.
+	req.TemporaryChat = s.defaultTemporaryChat
+
+	fmt.Printf("[SERVER] Received %s request for model %s with %d messages (Stream: %v)\n", r.Method, req.Model, len(req.Messages), req.Stream)
 
 	if len(req.Messages) == 0 {
 		http.Error(w, `{"error": "messages cannot be empty"}`, http.StatusBadRequest)
 		return
 	}
 
-	// Extract the prompt from the last user message
-	var promptText string
-	for i := len(req.Messages) - 1; i >= 0; i-- {
-		if req.Messages[i].Role == "user" {
-			promptText = req.Messages[i].Content
-			break
+	// Since the backend is a web UI chat box, we must compile the stateless API message history into a single string
+	var promptBuilder strings.Builder
+	
+	// If it's a temporary chat, we add our strict stateless directive
+	if req.TemporaryChat {
+		promptBuilder.WriteString("SYSTEM DIRECTIVE: You are a raw, stateless text-completion API model responding to an IDE. Tool execution (like Python or Advanced Data Analysis) is STRICTLY PROHIBITED. Do not create physical files. Only output raw markdown code blocks. Provide direct outputs with zero conversational filler.\n\n")
+	}
+
+	for _, msg := range req.Messages {
+		if msg.Role == "system" {
+			promptBuilder.WriteString("[System Instruction]: " + msg.Content + "\n\n")
+		} else if msg.Role == "assistant" {
+			promptBuilder.WriteString("[Assistant]: " + msg.Content + "\n\n")
+		} else if msg.Role == "user" {
+			promptBuilder.WriteString("[User]: " + msg.Content + "\n\n")
 		}
 	}
-	if promptText == "" {
-		promptText = req.Messages[len(req.Messages)-1].Content
-	}
+	
+	// Tell the model to respond to the last user message
+	promptBuilder.WriteString("\nRespond ONLY as the Assistant to the final User message above.")
+	
+	promptText := promptBuilder.String()
 
 	modelName := req.Model
 	if modelName == "" {
@@ -211,10 +244,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 
+		fmt.Printf("[SERVER] Forwarding streaming prompt to engine (TemporaryChat: %v, NewChat: %v)...\n", req.TemporaryChat, convID == "")
 		resp, err := s.engine.Prompt(r.Context(), spider.PromptRequest{
 			Prompt:         promptText,
 			ConversationID: convID,
 			Format:         formatConstraint,
+			TemporaryChat:  req.TemporaryChat,
 			OnToken: func(delta string) {
 				currentConvID := convID
 				if currentConvID == "" {
@@ -242,11 +277,13 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		})
 
 		if err != nil {
+			fmt.Printf("[SERVER] Engine Prompt Error (Streaming): %v\n", err)
 			errPayload, _ := json.Marshal(map[string]string{"error": err.Error()})
 			fmt.Fprintf(w, "data: %s\n\n", errPayload)
 			flusher.Flush()
 			return
 		}
+		fmt.Printf("[SERVER] Streaming completed successfully. ConversationID: %s\n", resp.ConversationID)
 
 		stop := "stop"
 		finalChunk := StreamChunk{
@@ -280,6 +317,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		Prompt:         promptText,
 		ConversationID: convID,
 		Format:         formatConstraint,
+		TemporaryChat:  req.TemporaryChat,
 	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), http.StatusInternalServerError)

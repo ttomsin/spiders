@@ -62,7 +62,7 @@ func Launch(opts Options) (*BrowserInstance, error) {
 	_ = os.Remove(filepath.Join(userDataDir, "Default", "lockfile"))
 
 	l := launcher.New().
-		Leakless(false).
+		Leakless(true).
 		Headless(opts.Headless).
 		UserDataDir(userDataDir).
 		Devtools(opts.Debug).

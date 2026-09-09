@@ -65,8 +65,8 @@ var promptCmd = &cobra.Command{
 			fmt.Printf("%s\n", yellow("Navigating to ChatGPT..."))
 		}
 
-		if err := eng.Initialize(chatSessionID); err != nil {
-			return err
+		if err := eng.Initialize(chatSessionID, temporaryChat); err != nil {
+			return fmt.Errorf("failed to initialize ChatGPT: %w", err)
 		}
 
 		if history {

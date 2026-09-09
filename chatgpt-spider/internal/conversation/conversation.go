@@ -79,6 +79,57 @@ func getEnabledSendButton(page *rod.Page) *rod.Element {
 	return nil
 }
 
+// DismissModals detects and dismisses onboarding modals, temporary chat announcements, or confirmation popups
+func DismissModals(page *rod.Page) {
+	buttons, err := page.Timeout(300 * time.Millisecond).Elements("button")
+	if err != nil || len(buttons) == 0 {
+		return
+	}
+	for _, b := range buttons {
+		txt, _ := b.Text()
+		aria, _ := b.Attribute("aria-label")
+		var ariaStr string
+		if aria != nil {
+			ariaStr = *aria
+		}
+		if txt == "Continue" || txt == "Got it" || txt == "OK" || ariaStr == "Close" {
+			_ = b.CancelTimeout().Click(proto.InputMouseButtonLeft, 1)
+			time.Sleep(200 * time.Millisecond)
+			break
+		}
+	}
+}
+
+// OpenTemporaryChat navigates to ChatGPT and ensures the temporary chat UI toggle is enabled
+func OpenTemporaryChat(page *rod.Page) error {
+	info, err := page.Info()
+	if err == nil && info != nil && strings.Contains(info.URL, "?temporary-chat=true") {
+		if err := page.Reload(); err != nil {
+			return fmt.Errorf("failed to reload temporary chat: %w", err)
+		}
+	} else {
+		if err := page.Navigate("https://chatgpt.com/?temporary-chat=true"); err != nil {
+			return fmt.Errorf("failed to navigate to temporary chat: %w", err)
+		}
+	}
+	_ = page.WaitLoad()
+	DismissModals(page)
+	
+	// Physically verify and click the UI toggle if the URL trick didn't work for this account
+	// Give React a moment to render the header
+	time.Sleep(1 * time.Second)
+	
+	// If the "Turn off temporary chat" button exists, it's already active.
+	// If the "Temporary chat" button exists, it's inactive, so we click it.
+	btn, err := page.Timeout(1 * time.Second).Element("button[aria-label='Temporary chat']")
+	if err == nil && btn != nil {
+		_ = btn.CancelTimeout().Click(proto.InputMouseButtonLeft, 1)
+		time.Sleep(500 * time.Millisecond) // Wait for UI transition
+	}
+	
+	return WaitUntilReady(page, 6*time.Second)
+}
+
 // WaitUntilReady dynamically waits for ChatGPT prompt textarea to become interactive without static sleeps
 func WaitUntilReady(page *rod.Page, timeout time.Duration) error {
 	if timeout <= 0 {
@@ -92,6 +143,7 @@ func WaitUntilReady(page *rod.Page, timeout time.Duration) error {
 	}
 
 	for time.Now().Before(deadline) {
+		DismissModals(page)
 		for _, sel := range selectors {
 			elem, err := page.Timeout(100 * time.Millisecond).Element(sel)
 			if err == nil && elem != nil {
@@ -252,12 +304,99 @@ func getAssistantElements(page *rod.Page) []*rod.Element {
 	return nil
 }
 
+// InjectSSEInterceptor overrides window.fetch to natively capture ChatGPT's Server-Sent Events (SSE) stream.
+// This allows us to extract the pure, raw Markdown directly from the LLM, bypassing the React UI.
+func InjectSSEInterceptor(page *rod.Page) {
+	injectJS := `() => {
+		if (window._sseInterceptorActive) return;
+		window._sseInterceptorActive = true;
+		window._chatgptTokens = "";
+		window._chatgptStreamFinished = false;
+		
+		const originalFetch = window.fetch;
+		window.fetch = async function(...args) {
+			const url = args[0];
+			const urlStr = typeof url === "string" ? url : (url && url.url ? url.url : "");
+			
+			// Only intercept the exact conversation endpoints to avoid resetting on /prepare or other APIs
+			const isConversationEndpoint = urlStr.endsWith("/backend-api/conversation") || urlStr.endsWith("/backend-api/f/conversation");
+			
+			if (isConversationEndpoint) {
+				// Reset stream buffers for the new generation
+				window._chatgptTokens = "";
+				window._chatgptStreamFinished = false;
+				
+				const response = await originalFetch.apply(this, args);
+				const cloned = response.clone();
+				
+				(async () => {
+					try {
+						const reader = cloned.body.getReader();
+						const decoder = new TextDecoder();
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+							const chunk = decoder.decode(value);
+							
+							// Parse the SSE chunk lines
+							let lines = chunk.split("\n");
+							for (let line of lines) {
+								if (line.startsWith("data: ")) {
+									let dataStr = line.substring(6).trim();
+									if (dataStr === "[DONE]") {
+										window._chatgptStreamFinished = true;
+										continue;
+									}
+									try {
+										let data = JSON.parse(dataStr);
+										window._debugSSELogs = (window._debugSSELogs || "") + "\nCHUNK: " + dataStr;
+										
+										// Try direct format
+										if (data.message && data.message.content && data.message.content.parts && data.message.content.parts.length > 0) {
+											window._chatgptTokens = data.message.content.parts[0];
+										}
+										// Try "v" wrapper format (delta encoding)
+										else if (data.v && data.v.message && data.v.message.content && data.v.message.content.parts && data.v.message.content.parts.length > 0) {
+											window._chatgptTokens = data.v.message.content.parts[0];
+										}
+										
+										// Try JSON Patch formatting (o: "append", p: "/message/content/parts/0", v: "chunk")
+										if (data.o === "append" && data.p === "/message/content/parts/0" && typeof data.v === "string") {
+											window._chatgptTokens += data.v;
+										}
+										// Try bare "v" delta chunks ({"v": "..."})
+										if (typeof data.v === "string" && !data.message && !data.o && !data.p) {
+											window._chatgptTokens += data.v;
+										}
+										// Try array of JSON Patches (o: "patch", v: [...])
+										if (data.o === "patch" && Array.isArray(data.v)) {
+											for (let op of data.v) {
+												if (op.o === "append" && op.p === "/message/content/parts/0" && typeof op.v === "string") {
+													window._chatgptTokens += op.v;
+												}
+											}
+										}
+									} catch (e) {}
+								}
+							}
+						}
+					} catch(e) {}
+					window._chatgptStreamFinished = true;
+				})();
+				return response;
+			}
+			return originalFetch.apply(this, args);
+		};
+	}`
+	_, _ = page.Eval(injectJS)
+}
+
 // CountAssistantMessages returns the number of assistant message blocks currently in the DOM
 func CountAssistantMessages(page *rod.Page) int {
 	return len(getAssistantElements(page))
 }
 
-// StreamCompletion polls the DOM and invokes onDelta with each newly rendered token chunk
+// StreamCompletion polls the SSE interceptor (or DOM fallback) and invokes onDelta with each chunk
 func StreamCompletion(ctx context.Context, page *rod.Page, initialCount int, maxWait time.Duration, onDelta func(delta string)) (string, error) {
 	if maxWait <= 0 {
 		maxWait = 5 * time.Minute
@@ -290,18 +429,47 @@ func StreamCompletion(ctx context.Context, page *rod.Page, initialCount int, max
 		// Also check if Send button has reappeared (meaning generation is definitely done)
 		sendBtn := getEnabledSendButton(page)
 
-		assistantMsgs := getAssistantElements(page)
-		if len(assistantMsgs) > initialCount {
-			lastElem := assistantMsgs[len(assistantMsgs)-1]
-
-			var text string
-			if md, err := lastElem.Element(".markdown, div[class*='whitespace-pre-wrap']"); err == nil && md != nil {
-				text, _ = md.Text()
-			} else {
-				text, _ = lastElem.Text()
+		// Check the SSE interceptor first
+		sseRes, err := page.Eval(`() => {
+			if (window._sseInterceptorActive && window._chatgptTokens && window._chatgptTokens !== "") {
+				return { text: window._chatgptTokens, finished: window._chatgptStreamFinished === true };
 			}
+			return null;
+		}`)
+		
+		var text string
+		var sseFinished bool
+		usedSSE := false
+		
+		if err == nil && sseRes != nil && !sseRes.Value.Nil() {
+			textVal := sseRes.Value.Get("text")
+			if textVal.String() != "" && textVal.String() != "<nil>" {
+				text = textVal.String()
+				sseFinished = sseRes.Value.Get("finished").Bool()
+				usedSSE = true
+				if text != "" {
+					hasSeenStreaming = true
+				}
+			}
+		} else {
+			// Fallback to DOM polling if SSE isn't active
+			assistantMsgs := getAssistantElements(page)
+			if len(assistantMsgs) > initialCount {
+				lastElem := assistantMsgs[len(assistantMsgs)-1]
+				if md, err := lastElem.Element(".markdown, div[class*='whitespace-pre-wrap']"); err == nil && md != nil {
+					text, _ = md.Text()
+				} else {
+					text, _ = lastElem.Text()
+				}
+			}
+		}
 
-			if text != "" {
+		if text != "" && len(text) > len(lastObservedText) {
+			// Debug log to console
+			fmt.Printf("[DEBUG] Extracted text (SSE=%v): %s\n", usedSSE, text[len(lastObservedText):])
+		}
+
+		if text != "" {
 				if len(text) > len(lastObservedText) {
 					delta := text[len(lastObservedText):]
 					if onDelta != nil && delta != "" {
@@ -311,21 +479,28 @@ func StreamCompletion(ctx context.Context, page *rod.Page, initialCount int, max
 					unchangedCount = 0
 				} else if text == lastObservedText {
 					unchangedCount++
+					// Fast path termination if SSE says [DONE]
+					if usedSSE && sseFinished {
+						if dbgRes, _ := page.Eval(`() => window._debugSSELogs`); dbgRes != nil { fmt.Printf("\n[DEBUG SSE RAW LOGS]\n%s\n[END DEBUG SSE RAW LOGS]\n", dbgRes.Value.String()) }
+						return strings.TrimSpace(lastObservedText), nil
+					}
 					// If send button has reappeared and text has stabilized, generation is finished
 					if sendBtn != nil && unchangedCount >= 2 {
+						if dbgRes, _ := page.Eval(`() => window._debugSSELogs`); dbgRes != nil { fmt.Printf("\n[DEBUG SSE RAW LOGS]\n%s\n[END DEBUG SSE RAW LOGS]\n", dbgRes.Value.String()) }
 						return strings.TrimSpace(lastObservedText), nil
 					}
 					// If we observed streaming and the stop button is no longer visible, finish
 					if hasSeenStreaming && !isGenerating && unchangedCount >= 2 {
+						if dbgRes, _ := page.Eval(`() => window._debugSSELogs`); dbgRes != nil { fmt.Printf("\n[DEBUG SSE RAW LOGS]\n%s\n[END DEBUG SSE RAW LOGS]\n", dbgRes.Value.String()) }
 						return strings.TrimSpace(lastObservedText), nil
 					}
 					// Fallback: if not generating and text has stabilized for 6 polls (~720ms)
 					if !isGenerating && unchangedCount >= 6 {
+						if dbgRes, _ := page.Eval(`() => window._debugSSELogs`); dbgRes != nil { fmt.Printf("\n[DEBUG SSE RAW LOGS]\n%s\n[END DEBUG SSE RAW LOGS]\n", dbgRes.Value.String()) }
 						return strings.TrimSpace(lastObservedText), nil
 					}
 				}
-			}
-		} else if time.Now().After(startDeadline) && !hasSeenStreaming {
+			} else if time.Now().After(startDeadline) && !hasSeenStreaming {
 			// In case the selector differed, check fallback
 			fallbacks, _ := page.Elements(".markdown")
 			if len(fallbacks) > initialCount {
@@ -338,10 +513,13 @@ func StreamCompletion(ctx context.Context, page *rod.Page, initialCount int, max
 			return "", fmt.Errorf("timeout waiting for assistant to begin generating")
 		}
 
-		time.Sleep(60 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	if lastObservedText != "" {
+		if dbgRes, _ := page.Eval(`() => window._debugSSELogs`); dbgRes != nil {
+			fmt.Printf("\n[DEBUG SSE RAW LOGS]\n%s\n[END DEBUG SSE RAW LOGS]\n", dbgRes.Value.String())
+		}
 		return strings.TrimSpace(lastObservedText), nil
 	}
 

@@ -20,6 +20,7 @@ var (
 	outputFile    string
 	formatSpec    string
 	sessionDelete bool
+	temporaryChat bool
 )
 
 const AppVersion = "1.0.0"
@@ -82,6 +83,8 @@ Features:
 func init() {
 	RootCmd.PersistentFlags().BoolVar(&headless, "headless", true, "Run browser in headless mode (default true, set --headless=false to view browser)")
 	RootCmd.PersistentFlags().BoolVar(&anon, "anon", false, "Run in anonymous / guest mode without using saved credentials or profile")
+	RootCmd.PersistentFlags().BoolVar(&temporaryChat, "temporary-chat", true, "Run in temporary chat mode (ephemeral, not saved to account history) (default true)")
+	RootCmd.PersistentFlags().BoolVar(&temporaryChat, "temp", true, "Alias for --temporary-chat")
 	RootCmd.PersistentFlags().BoolVar(&newChat, "new-chat", false, "Start a fresh conversation thread before sending prompt")
 	RootCmd.PersistentFlags().BoolVar(&history, "history", false, "Fetch and display the message history of the conversation")
 	RootCmd.PersistentFlags().StringVar(&chatSessionID, "chat-session-id", "", "Resume a specific existing conversation by ID or URL (e.g., 67c9b2e1-...)")

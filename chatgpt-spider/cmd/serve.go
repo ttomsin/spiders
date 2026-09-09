@@ -44,7 +44,7 @@ Endpoints:
 		}
 		defer eng.Close()
 
-		if err := eng.Initialize(""); err != nil {
+		if err := eng.Initialize("", temporaryChat); err != nil {
 			return fmt.Errorf("failed to initialize ChatGPT: %w", err)
 		}
 
@@ -54,7 +54,7 @@ Endpoints:
 		fmt.Printf("  • %s  http://localhost:%d/v1/history\n", cyan("GET"), port)
 		fmt.Printf("  • %s  http://localhost:%d/health\n\n", cyan("GET"), port)
 
-		srv := server.NewServer(eng, port)
+		srv := server.NewServer(eng, port, temporaryChat)
 		return srv.Start()
 	},
 }
