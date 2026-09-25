@@ -47,6 +47,7 @@ type Engine struct {
 	mu            sync.Mutex
 	convMu        sync.RWMutex
 	inst          *browser.BrowserInstance
+	hijacker      *conversation.HijackInterceptor
 	currentConv   string
 	tempTurnCount int
 	isTempChat    bool
@@ -100,13 +101,15 @@ func (e *Engine) Initialize(initialConvID string, isTemporary bool) error {
 			return err
 		}
 	}
-	
+
 	_ = page.WaitLoad()
-	err := conversation.WaitUntilReady(page, 6*time.Second)
-	if err == nil {
-		conversation.InjectSSEInterceptor(page)
+	if err := conversation.WaitUntilReady(page, 6*time.Second); err != nil {
+		return err
 	}
-	return err
+
+	// Set up the CDP-level network hijacker — runs for the lifetime of the page
+	e.hijacker = conversation.NewHijackInterceptor(page)
+	return nil
 }
 
 // Prompt sends a message and returns the response, invoking onToken live as tokens arrive
@@ -117,23 +120,21 @@ func (e *Engine) Prompt(ctx context.Context, req PromptRequest) (*PromptResponse
 	page := e.inst.Page
 
 	e.isTempChat = req.TemporaryChat
-	
+
 	// If the request has no ConversationID, it is a stateless API request.
 	// We MUST start a fresh chat to prevent duplicate history rendering on screen.
 	isStateless := req.ConversationID == ""
-	
+
 	if isStateless || req.NewChat {
 		if req.TemporaryChat {
-			// Always do a hard reload to clear the DOM screen for stateless requests
+			// Hard reload to clear the DOM screen for stateless requests
 			if info, _ := page.Info(); info != nil && strings.Contains(info.URL, "?temporary-chat=true") {
 				_ = page.Reload()
 				_ = page.WaitLoad()
 				conversation.DismissModals(page)
 				_ = conversation.WaitUntilReady(page, 5*time.Second)
-				conversation.InjectSSEInterceptor(page)
 			} else {
 				_ = conversation.OpenTemporaryChat(page)
-				conversation.InjectSSEInterceptor(page)
 			}
 			e.setConversationID("")
 			e.tempTurnCount = 0
@@ -148,18 +149,20 @@ func (e *Engine) Prompt(ctx context.Context, req PromptRequest) (*PromptResponse
 		}
 	}
 
-	// Count assistant messages in DOM before dispatching prompt
-	var initialCount int
-	if isStateless || req.NewChat || (e.GetCurrentConversationID() == "" && req.ConversationID == "") {
-		initialCount = 0
-	} else {
-		initialCount = conversation.CountAssistantMessages(page)
-	}
-
 	effectivePrompt := req.Prompt
-
 	if req.Format != "" {
 		effectivePrompt = format.ApplyFormatConstraint(effectivePrompt, req.Format)
+	}
+
+	timeout := req.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+
+	// Reset the hijacker channels BEFORE sending the prompt so we are ready
+	// to receive the SSE stream the moment the browser fires the POST request
+	if e.hijacker != nil {
+		e.hijacker.Reset()
 	}
 
 	if err := conversation.SendPrompt(ctx, page, effectivePrompt, req.FileContent); err != nil {
@@ -170,13 +173,34 @@ func (e *Engine) Prompt(ctx context.Context, req PromptRequest) (*PromptResponse
 		e.tempTurnCount++
 	}
 
-	timeout := req.Timeout
-	if timeout <= 0 {
-		timeout = 5 * time.Minute
+	var responseText string
+	var err error
+
+	if e.hijacker != nil {
+		// Primary path: CDP-level hijack — zero polling, immune to frontend changes
+		tokenChan, doneChan := e.hijacker.Channels()
+		responseText, err = conversation.StreamCompletionFromHijack(ctx, tokenChan, doneChan, timeout, req.OnToken)
+		if err != nil || responseText == "" {
+			// Fallback to DOM polling if hijack produced nothing
+			var initialCount int
+			if isStateless || req.NewChat {
+				initialCount = 0
+			} else {
+				initialCount = conversation.CountAssistantMessages(page)
+			}
+			responseText, err = conversation.StreamCompletion(ctx, page, initialCount, timeout, req.OnToken)
+		}
+	} else {
+		// No hijacker — use legacy DOM polling
+		var initialCount int
+		if isStateless || req.NewChat || (e.GetCurrentConversationID() == "" && req.ConversationID == "") {
+			initialCount = 0
+		} else {
+			initialCount = conversation.CountAssistantMessages(page)
+		}
+		responseText, err = conversation.StreamCompletion(ctx, page, initialCount, timeout, req.OnToken)
 	}
 
-	// Stream live tokens through the DOM watcher
-	responseText, err := conversation.StreamCompletion(ctx, page, initialCount, timeout, req.OnToken)
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +284,9 @@ func (e *Engine) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	if e.hijacker != nil {
+		e.hijacker.Stop()
+	}
 	if e.inst != nil {
 		return e.inst.Close()
 	}

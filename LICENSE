@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2023 Michelangelo27
+Copyright (c) 2026 ttomsin
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+### Educational Purpose & Disclaimer
+
+This project, its subprojects, and related code are developed and published strictly for **educational, academic, and research purposes** to demonstrate browser automation principles, Chrome DevTools Protocol (CDP) orchestration, and local system integration.
+
+- The authors and contributors do not encourage, endorse, or promote any violation of third-party Terms of Service or acceptable use policies.
+- Users are solely responsible for ensuring their use of this software complies with all applicable local laws, regulations, and third-party terms of service.
+- The software is provided "as-is" without warranty or liability of any kind.

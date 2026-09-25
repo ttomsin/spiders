@@ -223,6 +223,8 @@ Twitter searches typically cap visible results at roughly 500–800 tweets per q
 
 ## Advanced Search Guide: Harvesting High-Quality Datasets for AI/ML
 
+> 📖 **Full Reference & Recipes**: See [OPERATORS.md](OPERATORS.md) for the complete list of Twitter/X search operators, date ranges, media filters, and domain-specific search recipes.
+
 If you are gathering data to **fine-tune LLMs, train sentiment classifiers, create QA pairs, or build domain-specific NLP models**, raw social media text can be full of spam, bots, and noise.
 
 You can combine Twitter's advanced search operators directly inside the `-s` keyword parameter to curate clean, high-signal training datasets.

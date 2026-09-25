@@ -494,8 +494,9 @@ func StreamCompletion(ctx context.Context, page *rod.Page, initialCount int, max
 						if dbgRes, _ := page.Eval(`() => window._debugSSELogs`); dbgRes != nil { fmt.Printf("\n[DEBUG SSE RAW LOGS]\n%s\n[END DEBUG SSE RAW LOGS]\n", dbgRes.Value.String()) }
 						return strings.TrimSpace(lastObservedText), nil
 					}
-					// Fallback: if not generating and text has stabilized for 6 polls (~720ms)
-					if !isGenerating && unchangedCount >= 6 {
+					// DOM-only fallback: if not generating and no SSE active, wait for text to stabilize
+					// Don't use this when SSE is active — ChatGPT can pause mid-stream for seconds
+					if !usedSSE && !isGenerating && unchangedCount >= 6 {
 						if dbgRes, _ := page.Eval(`() => window._debugSSELogs`); dbgRes != nil { fmt.Printf("\n[DEBUG SSE RAW LOGS]\n%s\n[END DEBUG SSE RAW LOGS]\n", dbgRes.Value.String()) }
 						return strings.TrimSpace(lastObservedText), nil
 					}

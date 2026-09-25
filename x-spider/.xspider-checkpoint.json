@@ -1,9 +1,0 @@
-{
-  "query": "(Air Peace OR @flyairpeace OR \"Ibom Air\" OR @ibomairlines OR \"United Nigeria\" OR \"Arik Air\" OR \"Green Africa\" OR \"Dana Air\" OR airline) (smooth OR \"on time\" OR \"best airline\" OR \"great flight\" OR \"top notch\" OR seamless OR impressed OR kudos OR \"good job\" OR \"welldone\" OR \"clean aircraft\" OR \"good flight\" OR \"pleasant\" OR \"recommend\" OR \"comfortable\" OR \"lovely flight\" OR \"no delay\" OR \"on schedule\" OR \"safe flight\" OR \"enjoyed the flight\") since:2024-08-01 until:2024-09-01",
-  "target_file": "tweets-data\\chunked_harvest_plan_1_1788787931.jsonl",
-  "export_format": "jsonl",
-  "last_tweet_id": "1818836767577125094",
-  "total_saved": 512,
-  "target_limit": 3000,
-  "updated_at": "2026-09-07T14:00:59Z"
-}

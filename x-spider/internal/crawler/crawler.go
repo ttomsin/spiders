@@ -44,6 +44,7 @@ type Crawler struct {
 
 // NewCrawler initializes a crawler instance with configuration
 func NewCrawler(cfg *config.Config) *Crawler {
+	cfg.Normalize()
 	var sStore *session.Store
 	if cfg.SessionID != "" {
 		if s, err := session.OpenStore(); err == nil {
