@@ -1,0 +1,11 @@
+# Binaries and build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+dist/
+bin/
+
+# Session credentials
+*.db
+*.sqlite

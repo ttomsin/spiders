@@ -84,6 +84,11 @@ func deriveEncryptionKey() []byte {
 	return hash[:]
 }
 
+// InitStorage initializes the SQLite session database and ensures directory permissions
+func (sm *SessionManager) InitStorage() error {
+	return sm.initDB()
+}
+
 func (sm *SessionManager) initDB() error {
 	if sm.db != nil {
 		return nil

@@ -12,6 +12,10 @@ import (
 )
 
 var (
+	version   = "dev"
+	commit    = "none"
+	date      = "unknown"
+
 	headlessFlag bool
 	accountFlag  string
 	proxyFlag    string
@@ -20,13 +24,42 @@ var (
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "x-spider-ai",
-		Short: "x-spider-ai: Pluggable Twitter/X action engine for AI agents",
+		Use:     "xsai",
+		Aliases: []string{"x-spider-ai"},
+		Short:   "xsai: Autonomous Twitter/X action & perception engine for AI agents",
+		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
 	rootCmd.PersistentFlags().BoolVar(&headlessFlag, "headless", true, "Run browser in headless mode")
 	rootCmd.PersistentFlags().StringVarP(&accountFlag, "account", "a", "", "Target account ID or screen name to use")
 	rootCmd.PersistentFlags().StringVar(&proxyFlag, "proxy", "", "Optional HTTP/SOCKS proxy")
+
+	// Start / Init Command
+	initCmd := &cobra.Command{
+		Use:     "init",
+		Aliases: []string{"start", "setup"},
+		Short:   "Initialize secure encrypted session vault and environment on this machine",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sm := browser.NewSessionManager("")
+			if err := sm.InitStorage(); err != nil {
+				return fmt.Errorf("failed to initialize vault: %w", err)
+			}
+			fmt.Printf("✨ xsai initialized successfully!\n")
+			fmt.Printf("🔒 Encrypted Vault: %s\n", sm.GetDBPath())
+			fmt.Printf("🔑 AES-256 GCM key derived from machine profile.\n")
+
+			accounts, _ := sm.ListAccounts()
+			if len(accounts) == 0 {
+				fmt.Println("\nNext step: authenticate your account:")
+				fmt.Println("  xsai login <auth_token> [ct0] --id main --handle @_your_handle")
+				fmt.Println("  or start interactive browser login:")
+				fmt.Println("  xsai login")
+			} else {
+				fmt.Printf("Active accounts: %d\n", len(accounts))
+			}
+			return nil
+		},
+	}
 
 	// MCP Server command
 	mcpCmd := &cobra.Command{
@@ -550,7 +583,7 @@ func main() {
 
 	dbCmd.AddCommand(dbInfoCmd, dbDeleteCmd)
 
-	rootCmd.AddCommand(mcpCmd, serverCmd, loginCmd, accountsCmd, postCmd, quoteCmd, likeCmd, unlikeCmd, retweetCmd, bookmarkCmd, followCmd, unfollowCmd, profileCmd, meCmd, discoverCmd, logoutCmd, dbCmd)
+	rootCmd.AddCommand(initCmd, mcpCmd, serverCmd, loginCmd, accountsCmd, postCmd, quoteCmd, likeCmd, unlikeCmd, retweetCmd, bookmarkCmd, followCmd, unfollowCmd, profileCmd, meCmd, discoverCmd, logoutCmd, dbCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
