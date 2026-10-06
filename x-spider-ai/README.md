@@ -60,11 +60,61 @@
 
 ## Quick Start
 
-### Build Binary
+### 1. Download Standalone Binary (No Go Required!)
+Download the precompiled binary for your operating system directly from [**Releases**](https://github.com/ttomsin/spiders/releases):
+
+| OS / Architecture | Binary Name | Run Command |
+| :--- | :--- | :--- |
+| **Windows (64-bit)** | `xsai-windows-amd64.exe` | `.\xsai.exe` |
+| **Windows (ARM64)** | `xsai-windows-arm64.exe` | `.\xsai.exe` |
+| **Linux (x86_64)** | `xsai-linux-amd64` | `./xsai` |
+| **Linux (ARM64)** | `xsai-linux-arm64` | `./xsai` |
+| **macOS (Apple Silicon)** | `xsai-darwin-arm64` | `./xsai` |
+| **macOS (Intel)** | `xsai-darwin-amd64` | `./xsai` |
+
+Rename the downloaded binary to `xsai` (or `xsai.exe` on Windows) and place it in your `PATH` (such as `/usr/local/bin` on Linux/macOS).
+
+---
+
+### 2. Build Locally (Alternative)
+If you have Go 1.24+ installed:
 ```bash
-cd x-spider-ai
-go build -buildvcs=false -o x-spider-ai.exe .\cmd\x-spider-ai
+# Windows
+.\scripts\build-all.ps1
+
+# Linux / macOS
+chmod +x ./scripts/build-all.sh
+./scripts/build-all.sh
 ```
+
+---
+
+### 3. Initialize the Secure Vault
+Initialize your encrypted SQLite database and machine-derived AES-256 keys:
+```bash
+xsai start
+```
+
+---
+
+### Windows Defender & Smart App Control Note
+When downloading or locally compiling a brand-new executable on Windows 11, **Smart App Control (SAC)** or **Windows Defender** may block untrusted unsigned binaries with:
+```text
+Program 'xsai.exe' failed to run: An Application Control policy has blocked this file
+```
+
+**How to unblock on Windows:**
+1. **Unblock the file via PowerShell**:
+   ```powershell
+   Unblock-File .\xsai.exe
+   ```
+2. **Or run via Go directly during development**:
+   ```powershell
+   go run .\cmd\x-spider-ai start
+   ```
+3. **Or add a directory exclusion** in Windows Security &rarr; *Virus & threat protection* &rarr; *Manage settings* &rarr; *Exclusions*.
+
+---
 
 ## Authentication & Setup
 

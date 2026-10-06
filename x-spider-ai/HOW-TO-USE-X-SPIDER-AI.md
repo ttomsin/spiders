@@ -10,15 +10,32 @@
                 [The Pluggable Autonomous Agent & AI Action Engine for X]
 ```
 
-Welcome to **x-spider-ai**! This comprehensive manual guides you through every single feature and shows how to use it across all 3 interfaces:
-1. **Command Line (CLI)**
+Welcome to **x-spider-ai** (CLI command: **`xsai`**)! This comprehensive manual guides you through every single feature and shows how to use it across all 4 interfaces:
+1. **Command Line (CLI)** (`xsai` or `x-spider-ai`)
 2. **Model Context Protocol (MCP)** (for Claude, Cursor, Open WebUI, and custom LLM agents)
 3. **HTTP REST / JSON API** (for Python, LangChain, AutoGen, CrewAI, Node.js)
 4. **Native Go SDK** (`pkg/xspiderai`)
 
 ---
 
+## Quick Setup & Start
+
+Run the initialization command:
+```powershell
+xsai start
+```
+This automatically initializes your secure directory (`~/.x-spider-ai/`) and creates your encrypted SQLite session database with machine-derived AES-256 GCM keys.
+
+> **Note for Windows Users:**
+> If Windows Smart App Control or Defender blocks a downloaded or newly compiled binary, unblock it by running:
+> ```powershell
+> Unblock-File .\xsai.exe
+> ```
+
+---
+
 ## Table of Contents
+- [Quick Setup & Start](#quick-setup--start)
 - [Authentication & Setup](#authentication--setup)
 - [Feature Matrix Across Interfaces](#feature-matrix-across-interfaces)
 - [CLI Reference](#cli-reference)
@@ -31,7 +48,7 @@ Welcome to **x-spider-ai**! This comprehensive manual guides you through every s
 
 ## Authentication & Setup
 
-Twitter/X aggressively checks automated logins on `x.com/login`. To maintain absolute stealth and bypass bot detection, `x-spider-ai` uses **AES-256 GCM encrypted SQLite session storage** with your `auth_token`.
+Twitter/X aggressively checks automated logins on `x.com/login`. To maintain absolute stealth and bypass bot detection, `xsai` uses **AES-256 GCM encrypted SQLite session storage** with your `auth_token`.
 
 ### Step 1: Extract Your Token
 1. Open your regular browser (Chrome, Brave, Edge, Firefox) where you are logged into [x.com](https://x.com).
@@ -44,13 +61,17 @@ Twitter/X aggressively checks automated logins on `x.com/login`. To maintain abs
 Run this once in PowerShell or your terminal:
 
 ```powershell
-cd d:\Projects\GolandProjects\spiders\x-spider-ai
-.\x-spider-ai.exe login "<YOUR_AUTH_TOKEN>"
+xsai login "<YOUR_AUTH_TOKEN>"
 ```
 
 Or with `ct0`:
 ```powershell
-.\x-spider-ai.exe login "<YOUR_AUTH_TOKEN>" "<YOUR_CT0>"
+xsai login "<YOUR_AUTH_TOKEN>" "<YOUR_CT0>"
+```
+
+Or name an account explicitly:
+```powershell
+xsai login "<YOUR_AUTH_TOKEN>" "<YOUR_CT0>" --id main --handle @_ttomsin
 ```
 
 Your session is encrypted using machine-specific keys and saved into:

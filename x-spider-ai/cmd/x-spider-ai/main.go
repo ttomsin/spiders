@@ -57,6 +57,10 @@ func main() {
 			} else {
 				fmt.Printf("Active accounts: %d\n", len(accounts))
 			}
+
+			fmt.Println("\n💡 Tip for Windows users:")
+			fmt.Println("  If Windows Smart App Control or Defender flags a newly compiled binary, run:")
+			fmt.Println("  Unblock-File .\\xsai.exe")
 			return nil
 		},
 	}
