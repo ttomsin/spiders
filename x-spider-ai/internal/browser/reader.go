@@ -3,6 +3,7 @@ package browser
 import (
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -93,6 +94,130 @@ func (r *Reader) SearchTweets(query string, tab string, scrollOpts models.Scroll
 	}
 
 	return results, nil
+}
+
+// Discover executes multi-query searches with temporal and engagement constraints
+func (r *Reader) Discover(opts models.DiscoverOptions) ([]models.Tweet, error) {
+	if len(opts.Queries) == 0 {
+		return nil, fmt.Errorf("at least one search query must be provided")
+	}
+
+	maxResults := opts.MaxResults
+	if maxResults <= 0 {
+		maxResults = 20
+	}
+
+	sortMode := strings.ToLower(strings.TrimSpace(opts.Sort))
+	if sortMode == "" {
+		sortMode = "relevance"
+	}
+
+	var combined []models.Tweet
+	seen := make(map[string]bool)
+
+	for _, rawQuery := range opts.Queries {
+		q := strings.TrimSpace(rawQuery)
+		if q == "" {
+			continue
+		}
+
+		// Build Twitter advanced search clauses
+		var queryParts []string
+		queryParts = append(queryParts, q)
+
+		if opts.Since != "" {
+			queryParts = append(queryParts, fmt.Sprintf("since:%s", opts.Since))
+		}
+		if opts.Until != "" {
+			queryParts = append(queryParts, fmt.Sprintf("until:%s", opts.Until))
+		}
+		if opts.MinEngagement > 0 {
+			queryParts = append(queryParts, fmt.Sprintf("min_faves:%d", opts.MinEngagement))
+		}
+		if !opts.IncludeReplies {
+			queryParts = append(queryParts, "-filter:replies")
+		}
+
+		fullQuery := strings.Join(queryParts, " ")
+
+		fParam := ""
+		if sortMode == "recent" || sortMode == "oldest" {
+			fParam = "&f=live"
+		}
+
+		searchURL := fmt.Sprintf("https://x.com/search?q=%s%s", url.QueryEscape(fullQuery), fParam)
+		r.engine.ClearCapturedTweets()
+
+		if err := r.engine.NavigateTo(searchURL); err != nil {
+			continue
+		}
+
+		scrollOpts := models.ScrollOptions{
+			MaxScrolls:  2,
+			DelayMs:     1200,
+			TargetCount: maxResults,
+		}
+
+		captured, err := r.engine.Scroll(scrollOpts)
+		if err == nil {
+			for _, tw := range captured {
+				if tw.ID != "" && !seen[tw.ID] {
+					// Client-side filtering check for replies if needed
+					if !opts.IncludeReplies && tw.InReplyToStatusID != "" {
+						continue
+					}
+					// Client-side check for min engagement
+					totalEngagement := tw.FavoriteCount + tw.RetweetCount
+					if opts.MinEngagement > 0 && totalEngagement < opts.MinEngagement {
+						continue
+					}
+
+					seen[tw.ID] = true
+					combined = append(combined, tw)
+				}
+			}
+		}
+
+		if len(combined) >= maxResults*2 {
+			break
+		}
+	}
+
+	// Apply post-processing sorts
+	switch sortMode {
+	case "engagement":
+		sort.SliceStable(combined, func(i, j int) bool {
+			scoreI := combined[i].FavoriteCount*2 + combined[i].RetweetCount*3 + combined[i].ReplyCount
+			scoreJ := combined[j].FavoriteCount*2 + combined[j].RetweetCount*3 + combined[j].ReplyCount
+			return scoreI > scoreJ
+		})
+	case "oldest":
+		sort.SliceStable(combined, func(i, j int) bool {
+			tI, errI := time.Parse(time.RubyDate, combined[i].CreatedAt)
+			tJ, errJ := time.Parse(time.RubyDate, combined[j].CreatedAt)
+			if errI == nil && errJ == nil {
+				return tI.Before(tJ)
+			}
+			return combined[i].ID < combined[j].ID
+		})
+	case "recent":
+		sort.SliceStable(combined, func(i, j int) bool {
+			tI, errI := time.Parse(time.RubyDate, combined[i].CreatedAt)
+			tJ, errJ := time.Parse(time.RubyDate, combined[j].CreatedAt)
+			if errI == nil && errJ == nil {
+				return tI.After(tJ)
+			}
+			return combined[i].ID > combined[j].ID
+		})
+	case "relevance":
+		// Preserves Twitter's original search relevance ranking
+	}
+
+	if len(combined) > maxResults {
+		combined = combined[:maxResults]
+	}
+
+	return combined, nil
 }
 
 // ReadUserTimeline navigates to a user's profile and returns their recent tweets

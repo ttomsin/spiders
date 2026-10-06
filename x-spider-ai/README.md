@@ -204,6 +204,7 @@ Now any LLM can call:
 - `x_retweet(tweet_id="2107167470134133132")`
 - `x_send_direct_message(screen_name="_ttomsin", text="Hi from x-spider-ai!")`
 - `x_search_tweets(query="golang ai", tab="Latest")`
+- `x_discover(queries=["who started saying no wahala", "where did no wahala come from"], since="2020-01-01", until="2024-01-01", min_engagement=10, sort="engagement", include_replies=true)`
 
 ### REST / JSON API (For Python, Node.js, LangChain, AutoGen)
 Launch the standalone server:
@@ -221,6 +222,7 @@ Available REST Endpoints:
 - `POST /api/v1/tweets/delete`
 - `GET  /api/v1/tweets/thread?tweet_id=...`
 - `GET  /api/v1/tweets/search?query=...&tab=...`
+- `POST /api/v1/tweets/discover`
 - `GET  /api/v1/users/timeline?screen_name=...`
 - `POST /api/v1/users/follow`
 - `POST /api/v1/messages/send`

@@ -137,6 +137,11 @@ func (c *Client) SearchTweets(query string, tab string, scrollOpts ScrollOptions
 	return c.reader.SearchTweets(query, tab, scrollOpts)
 }
 
+// Discover executes multi-query semantic research across dates, replies, and engagement levels
+func (c *Client) Discover(opts DiscoverOptions) ([]Tweet, error) {
+	return c.reader.Discover(opts)
+}
+
 // ReadUserTimeline reads tweets from a specific user's profile
 func (c *Client) ReadUserTimeline(screenName string, scrollOpts ScrollOptions) ([]Tweet, error) {
 	return c.reader.ReadUserTimeline(screenName, scrollOpts)

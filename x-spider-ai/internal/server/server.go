@@ -41,6 +41,7 @@ func (s *HTTPServer) Start() error {
 	mux.HandleFunc("/api/v1/tweets/delete", s.handleDelete)
 	mux.HandleFunc("/api/v1/tweets/thread", s.handleThread)
 	mux.HandleFunc("/api/v1/tweets/search", s.handleSearch)
+	mux.HandleFunc("/api/v1/tweets/discover", s.handleDiscover)
 	mux.HandleFunc("/api/v1/users/follow", s.handleFollow)
 	mux.HandleFunc("/api/v1/users/unfollow", s.handleUnfollow)
 	mux.HandleFunc("/api/v1/users/profile", s.handleProfile)
@@ -194,6 +195,28 @@ func (s *HTTPServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := s.client.SearchTweets(query, tab, xspiderai.ScrollOptions{MaxScrolls: 3})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *HTTPServer) handleDiscover(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var opts xspiderai.DiscoverOptions
+	if err := json.NewDecoder(r.Body).Decode(&opts); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json payload"})
+		return
+	}
+	if len(opts.Queries) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "queries array must not be empty"})
+		return
+	}
+	res, err := s.client.Discover(opts)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

@@ -134,6 +134,8 @@ func parseSingleTweet(m map[string]any) *models.Tweet {
 
 	if author.ScreenName != "" {
 		tw.TweetURL = "https://x.com/" + author.ScreenName + "/status/" + id
+	} else {
+		tw.TweetURL = "https://x.com/i/status/" + id
 	}
 
 	// Check if this tweet quotes another tweet
@@ -155,12 +157,23 @@ func parseUser(m map[string]any) models.UserProfile {
 	// Core or legacy user
 	core, _ := m["core"].(map[string]any)
 	if core != nil {
-		if userResults, ok := core["user_results"].(map[string]any); ok {
-			if res, ok := userResults["result"].(map[string]any); ok {
-				if restID, ok := res["rest_id"].(string); ok {
+		userObj := core["user_results"]
+		if userObj == nil {
+			userObj = core["user_result"]
+		}
+
+		if userMap, ok := userObj.(map[string]any); ok {
+			res := userMap["result"]
+			if resMap, ok := res.(map[string]any); ok {
+				if restID, ok := resMap["rest_id"].(string); ok {
 					prof.ID = restID
 				}
-				if uLegacy, ok := res["legacy"].(map[string]any); ok {
+				// It could be in resMap["legacy"] or directly in resMap
+				uLegacy, _ := resMap["legacy"].(map[string]any)
+				if uLegacy == nil {
+					uLegacy = resMap
+				}
+				if uLegacy != nil {
 					prof.Name, _ = uLegacy["name"].(string)
 					prof.ScreenName, _ = uLegacy["screen_name"].(string)
 					prof.Description, _ = uLegacy["description"].(string)

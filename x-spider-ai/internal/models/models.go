@@ -93,3 +93,14 @@ type ScrollOptions struct {
 	TargetCount   int    `json:"target_count"`
 	ScrollElement string `json:"scroll_element,omitempty"`
 }
+
+// DiscoverOptions defines multi-angle semantic research parameters for agents
+type DiscoverOptions struct {
+	Queries        []string `json:"queries"`
+	Since          string   `json:"since,omitempty"`          // e.g. YYYY-MM-DD
+	Until          string   `json:"until,omitempty"`          // e.g. YYYY-MM-DD
+	MaxResults     int      `json:"max_results,omitempty"`     // Result volume limit
+	Sort           string   `json:"sort,omitempty"`           // "relevance", "recent", "oldest", "engagement"
+	MinEngagement  int      `json:"min_engagement,omitempty"` // Minimum favorites/replies floor
+	IncludeReplies bool     `json:"include_replies,omitempty"` // Whether to include reply posts
+}

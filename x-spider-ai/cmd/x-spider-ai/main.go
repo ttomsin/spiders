@@ -398,9 +398,66 @@ func main() {
 		},
 	}
 
+	var (
+		discoverQueries        []string
+		discoverSince          string
+		discoverUntil          string
+		discoverMaxResults     int
+		discoverSort           string
+		discoverMinEngagement  int
+		discoverIncludeReplies bool
+	)
+
+	discoverCmd := &cobra.Command{
+		Use:   "discover [query...]",
+		Short: "Multi-angle semantic discovery on X across queries, dates, engagement, and replies",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			queries := append(discoverQueries, args...)
+			if len(queries) == 0 {
+				return fmt.Errorf("at least one search query must be provided via arguments or -q/--query")
+			}
+
+			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
+				Headless: headlessFlag,
+			})
+			if err != nil {
+				return err
+			}
+			defer client.Close()
+
+			results, err := client.Discover(xspiderai.DiscoverOptions{
+				Queries:        queries,
+				Since:          discoverSince,
+				Until:          discoverUntil,
+				MaxResults:     discoverMaxResults,
+				Sort:           discoverSort,
+				MinEngagement:  discoverMinEngagement,
+				IncludeReplies: discoverIncludeReplies,
+			})
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("Discovered %d tweets across %d search queries:\n\n", len(results), len(queries))
+			for i, tw := range results {
+				fmt.Printf("[%d] ID: %s | @%s (%s)\n    Likes: %d | Retweets: %d | Replies: %d\n    Text: %s\n    URL: %s\n\n",
+					i+1, tw.ID, tw.Author.ScreenName, tw.CreatedAt, tw.FavoriteCount, tw.RetweetCount, tw.ReplyCount, tw.FullText, tw.TweetURL)
+			}
+			return nil
+		},
+	}
+
+	discoverCmd.Flags().StringSliceVarP(&discoverQueries, "query", "q", []string{}, "Search queries (can be specified multiple times)")
+	discoverCmd.Flags().StringVar(&discoverSince, "since", "", "Lower date boundary (YYYY-MM-DD)")
+	discoverCmd.Flags().StringVar(&discoverUntil, "until", "", "Upper date boundary (YYYY-MM-DD)")
+	discoverCmd.Flags().IntVarP(&discoverMaxResults, "max", "m", 20, "Maximum number of tweets to return")
+	discoverCmd.Flags().StringVarP(&discoverSort, "sort", "s", "relevance", "Sort order: relevance, recent, oldest, engagement")
+	discoverCmd.Flags().IntVar(&discoverMinEngagement, "min-engagement", 0, "Minimum engagement count (likes + retweets)")
+	discoverCmd.Flags().BoolVar(&discoverIncludeReplies, "include-replies", false, "Include replies in search results")
+
 	dbCmd.AddCommand(dbInfoCmd, dbDeleteCmd)
 
-	rootCmd.AddCommand(mcpCmd, serverCmd, loginCmd, postCmd, quoteCmd, likeCmd, unlikeCmd, retweetCmd, bookmarkCmd, followCmd, unfollowCmd, profileCmd, meCmd, logoutCmd, dbCmd)
+	rootCmd.AddCommand(mcpCmd, serverCmd, loginCmd, postCmd, quoteCmd, likeCmd, unlikeCmd, retweetCmd, bookmarkCmd, followCmd, unfollowCmd, profileCmd, meCmd, discoverCmd, logoutCmd, dbCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

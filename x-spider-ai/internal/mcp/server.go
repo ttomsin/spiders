@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -211,6 +212,64 @@ func (s *Server) registerTools() {
 		results, err := s.client.SearchTweets(query, tab, xspiderai.ScrollOptions{MaxScrolls: maxScrolls})
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Failed to search tweets: %v", err)), nil
+		}
+
+		resBytes, _ := json.MarshalIndent(results, "", "  ")
+		return mcp.NewToolResultText(string(resBytes)), nil
+	})
+
+	// Tool: discover
+	s.mcpServer.AddTool(mcp.NewTool("x_discover",
+		mcp.WithDescription("Multi-angle semantic discovery and research on X. Executes multiple complementary queries with temporal bounds (since/until), engagement filtering, reply inclusion, and sorting."),
+		mcp.WithArray("queries", mcp.Required(), mcp.Description("List of query angles/phrasings to search in one coordinated call")),
+		mcp.WithString("since", mcp.Description("Optional start date boundary in YYYY-MM-DD format")),
+		mcp.WithString("until", mcp.Description("Optional end date boundary in YYYY-MM-DD format")),
+		mcp.WithNumber("max_results", mcp.Description("Maximum number of tweets to return (default 20)")),
+		mcp.WithString("sort", mcp.Description("Sort ordering: 'relevance' (default), 'recent', 'oldest', or 'engagement'")),
+		mcp.WithNumber("min_engagement", mcp.Description("Minimum engagement floor (likes + retweets count)")),
+		mcp.WithBoolean("include_replies", mcp.Description("Whether to include reply posts where answers/evidence often live (default false)")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.GetArguments()
+
+		var queries []string
+		if rawQueries, ok := args["queries"].([]any); ok {
+			for _, q := range rawQueries {
+				if qs, ok := q.(string); ok && strings.TrimSpace(qs) != "" {
+					queries = append(queries, strings.TrimSpace(qs))
+				}
+			}
+		}
+
+		since, _ := args["since"].(string)
+		until, _ := args["until"].(string)
+		sortVal, _ := args["sort"].(string)
+
+		maxResults := 20
+		if mr, ok := args["max_results"].(float64); ok && mr > 0 {
+			maxResults = int(mr)
+		}
+
+		minEngagement := 0
+		if me, ok := args["min_engagement"].(float64); ok && me > 0 {
+			minEngagement = int(me)
+		}
+
+		includeReplies := false
+		if ir, ok := args["include_replies"].(bool); ok {
+			includeReplies = ir
+		}
+
+		results, err := s.client.Discover(xspiderai.DiscoverOptions{
+			Queries:        queries,
+			Since:          since,
+			Until:          until,
+			MaxResults:     maxResults,
+			Sort:           sortVal,
+			MinEngagement:  minEngagement,
+			IncludeReplies: includeReplies,
+		})
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to discover tweets: %v", err)), nil
 		}
 
 		resBytes, _ := json.MarshalIndent(results, "", "  ")

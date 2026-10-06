@@ -150,6 +150,12 @@ Quote without text:
 .\x-spider-ai.exe unfollow _ttomsin
 ```
 
+### 10. Multi-Angle Semantic Discovery (`discover`)
+Execute multiple query angles in a single coordinated search with temporal boundaries, engagement thresholds, and reply inclusion:
+```powershell
+.\x-spider-ai.exe discover -q "who started saying no wahala" -q "where did no wahala come from" --since "2020-01-01" --until "2024-01-01" --min-engagement 10 --sort engagement --include-replies
+```
+
 ---
 
 ## Model Context Protocol (MCP) Tools
@@ -180,6 +186,7 @@ To use `x-spider-ai` inside **Claude Desktop**, **Cursor**, or custom AI agents,
 - `x_get_my_profile()`
 - `x_read_thread(tweet_id, [max_scrolls])`
 - `x_search_tweets(query, [tab], [max_scrolls])`
+- `x_discover(queries, [since], [until], [max_results], [sort], [min_engagement], [include_replies])`
 - `x_read_user_timeline(screen_name, [max_scrolls])`
 - `x_send_direct_message(screen_name, text)`
 - `x_scroll_page([scroll_count], [delay_ms])`
@@ -210,7 +217,21 @@ Start the local server:
 #### 5. Search Tweets
 `GET http://localhost:8080/api/v1/tweets/search?query=golang+ai&tab=Latest`
 
-#### 6. Read User Timeline
+#### 6. Multi-Angle Semantic Discovery (`discover`)
+`POST http://localhost:8080/api/v1/tweets/discover`
+```json
+{
+  "queries": ["who started saying no wahala", "where did no wahala come from"],
+  "since": "2020-01-01",
+  "until": "2024-01-01",
+  "max_results": 20,
+  "sort": "engagement",
+  "min_engagement": 10,
+  "include_replies": true
+}
+```
+
+#### 7. Read User Timeline
 `GET http://localhost:8080/api/v1/users/timeline?screen_name=_ttomsin`
 
 #### 7. Post a Tweet (or Quote / Reply)
