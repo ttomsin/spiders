@@ -156,6 +156,23 @@ Execute multiple query angles in a single coordinated search with temporal bound
 .\x-spider-ai.exe discover -q "who started saying no wahala" -q "where did no wahala come from" --since "2020-01-01" --until "2024-01-01" --min-engagement 10 --sort engagement --include-replies
 ```
 
+### 11. Multi-Account Management
+Store multiple accounts in the encrypted SQLite database and switch between them seamlessly or target them per-action:
+```powershell
+# Add a secondary account
+.\x-spider-ai.exe login <auth_token> <ct0> --id bot_alpha --handle @_alpha_bot
+
+# List all saved accounts
+.\x-spider-ai.exe accounts list
+
+# Switch the default active account
+.\x-spider-ai.exe accounts switch bot_alpha
+
+# Run any action targeting a specific account without switching default
+.\x-spider-ai.exe post "Posting from Bot Alpha!" --account bot_alpha
+.\x-spider-ai.exe like 2107167470134133132 --account main
+```
+
 ---
 
 ## Model Context Protocol (MCP) Tools

@@ -33,6 +33,8 @@ func (s *HTTPServer) Start() error {
 	})
 
 	mux.HandleFunc("/api/v1/auth/login", s.handleLogin)
+	mux.HandleFunc("/api/v1/accounts", s.handleAccounts)
+	mux.HandleFunc("/api/v1/accounts/switch", s.handleSwitchAccount)
 	mux.HandleFunc("/api/v1/tweets/post", s.handlePostTweet)
 	mux.HandleFunc("/api/v1/tweets/like", s.handleLike)
 	mux.HandleFunc("/api/v1/tweets/unlike", s.handleUnlike)
@@ -61,18 +63,69 @@ func (s *HTTPServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		AuthToken string `json:"auth_token"`
-		CT0       string `json:"ct0"`
+		AccountID  string `json:"account_id"`
+		ScreenName string `json:"screen_name"`
+		AuthToken  string `json:"auth_token"`
+		CT0        string `json:"ct0"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json payload"})
 		return
 	}
-	if err := s.client.Login(req.AuthToken, req.CT0); err != nil {
+	accID := req.AccountID
+	if accID == "" {
+		accID = "default"
+	}
+	if err := s.client.LoginAccount(accID, req.ScreenName, req.AuthToken, req.CT0); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "authenticated"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "authenticated and saved", "account_id": accID})
+}
+
+func (s *HTTPServer) handleAccounts(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		accounts, err := s.client.ListAccounts()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, accounts)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		accountID := r.URL.Query().Get("account_id")
+		if accountID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "account_id query parameter required"})
+			return
+		}
+		if err := s.client.DeleteAccount(accountID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"message": "deleted", "account_id": accountID})
+		return
+	}
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+func (s *HTTPServer) handleSwitchAccount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		AccountID string `json:"account_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AccountID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "account_id is required"})
+		return
+	}
+	if err := s.client.SwitchAccount(req.AccountID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "active account switched", "account_id": req.AccountID})
 }
 
 func (s *HTTPServer) handlePostTweet(w http.ResponseWriter, r *http.Request) {

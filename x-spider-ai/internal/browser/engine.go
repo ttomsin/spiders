@@ -36,6 +36,7 @@ type Engine struct {
 
 // Config configures the browser engine
 type Config struct {
+	AccountID   string
 	Headless    bool
 	ProxyURL    string
 	SessionPath string
@@ -73,8 +74,8 @@ func NewEngine(cfg Config) (*Engine, error) {
 		onTweetChan: make(chan models.Tweet, 200),
 	}
 
-	// Try loading saved session
-	if sess, err := sm.LoadSession(); err == nil {
+	// Try loading target or active saved session
+	if sess, err := sm.LoadAccountSession(cfg.AccountID); err == nil {
 		eng.sessionData = sess
 		eng.csrfToken = sess.CT0
 		eng.bearerToken = sess.BearerToken
@@ -219,9 +220,14 @@ func (e *Engine) setupHijacking() error {
 	return nil
 }
 
-// LoginWithTokens sets authentication cookies and validates login on x.com
-func (e *Engine) LoginWithTokens(authToken, ct0 string) error {
+// LoginWithTokens sets authentication cookies and validates login on x.com for a specific account
+func (e *Engine) LoginWithTokens(accountID, screenName, authToken, ct0 string) error {
+	if accountID == "" {
+		accountID = "default"
+	}
 	e.sessionData = &SessionData{
+		AccountID:   accountID,
+		ScreenName:  screenName,
 		AuthToken:   authToken,
 		CT0:         ct0,
 		CookieMap:   map[string]string{"auth_token": authToken, "ct0": ct0},
@@ -245,10 +251,42 @@ func (e *Engine) LoginWithTokens(authToken, ct0 string) error {
 	if err := e.page.Navigate("https://x.com/home"); err != nil {
 		return err
 	}
-	_ = e.page.WaitLoad()
+	_ = e.page.Timeout(10 * time.Second).WaitLoad()
 	time.Sleep(2 * time.Second)
 
 	return nil
+}
+
+// SwitchAccount dynamically loads another account's session cookies into the running browser
+func (e *Engine) SwitchAccount(accountID string) error {
+	sess, err := e.sessionMgr.LoadAccountSession(accountID)
+	if err != nil {
+		return err
+	}
+	e.sessionData = sess
+	e.csrfToken = sess.CT0
+	e.bearerToken = sess.BearerToken
+
+	if err := e.sessionMgr.SwitchAccount(accountID); err != nil {
+		return err
+	}
+
+	if e.page != nil && sess.AuthToken != "" {
+		if err := e.injectCookies(sess.AuthToken, sess.CT0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ListAccounts returns all registered accounts in SQLite
+func (e *Engine) ListAccounts() ([]models.AccountInfo, error) {
+	return e.sessionMgr.ListAccounts()
+}
+
+// DeleteAccount deletes a specific account from SQLite
+func (e *Engine) DeleteAccount(accountID string) error {
+	return e.sessionMgr.DeleteAccount(accountID)
 }
 
 // LoginInteractive opens a visible browser window, guides the user to log in, and extracts auth_token and ct0 automatically

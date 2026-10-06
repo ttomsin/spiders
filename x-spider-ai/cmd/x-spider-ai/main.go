@@ -13,6 +13,7 @@ import (
 
 var (
 	headlessFlag bool
+	accountFlag  string
 	proxyFlag    string
 	portFlag     int
 )
@@ -24,6 +25,7 @@ func main() {
 	}
 
 	rootCmd.PersistentFlags().BoolVar(&headlessFlag, "headless", true, "Run browser in headless mode")
+	rootCmd.PersistentFlags().StringVarP(&accountFlag, "account", "a", "", "Target account ID or screen name to use")
 	rootCmd.PersistentFlags().StringVar(&proxyFlag, "proxy", "", "Optional HTTP/SOCKS proxy")
 
 	// MCP Server command
@@ -66,10 +68,23 @@ func main() {
 	serverCmd.Flags().IntVarP(&portFlag, "port", "p", 8080, "Port to listen on")
 
 	// CLI Actions
+	var (
+		loginAccountID string
+		loginHandle    string
+	)
+
 	loginCmd := &cobra.Command{
 		Use:   "login [auth_token] [ct0]",
 		Short: "Log in interactively via browser, or provide auth_token [ct0] directly",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			targetAcc := loginAccountID
+			if targetAcc == "" {
+				targetAcc = accountFlag
+			}
+			if targetAcc == "" {
+				targetAcc = "default"
+			}
+
 			// If tokens are provided directly
 			if len(args) >= 1 {
 				authToken := args[0]
@@ -79,24 +94,26 @@ func main() {
 				}
 
 				client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-					Headless: headlessFlag,
+					AccountID: targetAcc,
+					Headless:  headlessFlag,
 				})
 				if err != nil {
 					return err
 				}
 				defer client.Close()
 
-				if err := client.Login(authToken, ct0); err != nil {
+				if err := client.LoginAccount(targetAcc, loginHandle, authToken, ct0); err != nil {
 					return err
 				}
-				fmt.Println("Login successful and session encrypted!")
+				fmt.Printf("Login successful for account %q and session encrypted in SQLite!\n", targetAcc)
 				return nil
 			}
 
 			// Interactive mode: open visible browser and auto-capture login cookies
-			fmt.Println("[x-spider-ai] No tokens passed. Starting interactive browser login...")
+			fmt.Printf("[x-spider-ai] No tokens passed. Starting interactive browser login for account %q...\n", targetAcc)
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: false, // Must be visible for user interaction
+				AccountID: targetAcc,
+				Headless:  false, // Must be visible for user interaction
 			})
 			if err != nil {
 				return err
@@ -106,10 +123,12 @@ func main() {
 			if err := client.LoginInteractive(180); err != nil {
 				return err
 			}
-			fmt.Println("Interactive login completed! You can now use x-spider-ai headlessly.")
+			fmt.Printf("Interactive login completed for account %q! You can now use x-spider-ai headlessly.\n", targetAcc)
 			return nil
 		},
 	}
+	loginCmd.Flags().StringVar(&loginAccountID, "id", "", "Account identifier (e.g. main, bot1)")
+	loginCmd.Flags().StringVar(&loginHandle, "handle", "", "Twitter screen name / handle (e.g. @_ttomsin)")
 
 	var mediaPaths []string
 	postCmd := &cobra.Command{
@@ -118,7 +137,8 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -195,7 +215,8 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -217,7 +238,8 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -245,7 +267,8 @@ func main() {
 			}
 
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -271,7 +294,8 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -293,7 +317,8 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -315,7 +340,8 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -337,7 +363,8 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -359,7 +386,8 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -381,7 +409,8 @@ func main() {
 		Short: "Get the authenticated account's profile details",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := xspiderai.NewClient(xspiderai.ClientOptions{
-				Headless: headlessFlag,
+				AccountID: accountFlag,
+				Headless:  headlessFlag,
 			})
 			if err != nil {
 				return err
@@ -455,9 +484,73 @@ func main() {
 	discoverCmd.Flags().IntVar(&discoverMinEngagement, "min-engagement", 0, "Minimum engagement count (likes + retweets)")
 	discoverCmd.Flags().BoolVar(&discoverIncludeReplies, "include-replies", false, "Include replies in search results")
 
+	accountsCmd := &cobra.Command{
+		Use:   "accounts",
+		Short: "Manage multiple Twitter/X accounts in the local encrypted database",
+	}
+
+	accountsListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all saved Twitter/X account credentials",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sm := browser.NewSessionManager("")
+			accounts, err := sm.ListAccounts()
+			if err != nil {
+				return err
+			}
+			if len(accounts) == 0 {
+				fmt.Println("No accounts registered. Use 'login [auth_token] [ct0] --id <account_id>' to add one.")
+				return nil
+			}
+			fmt.Printf("Registered Accounts (%d):\n", len(accounts))
+			for i, a := range accounts {
+				activeTag := ""
+				if a.IsActive {
+					activeTag = " [ACTIVE]"
+				}
+				handleTag := ""
+				if a.ScreenName != "" {
+					handleTag = fmt.Sprintf(" (@%s)", a.ScreenName)
+				}
+				fmt.Printf("[%d] %s%s%s (Updated: %s)\n", i+1, a.ID, handleTag, activeTag, a.UpdatedAt)
+			}
+			return nil
+		},
+	}
+
+	accountsSwitchCmd := &cobra.Command{
+		Use:   "switch <account_id>",
+		Short: "Switch the default active account",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sm := browser.NewSessionManager("")
+			if err := sm.SwitchAccount(args[0]); err != nil {
+				return err
+			}
+			fmt.Printf("Successfully switched active account to %q\n", args[0])
+			return nil
+		},
+	}
+
+	accountsDeleteCmd := &cobra.Command{
+		Use:   "delete <account_id>",
+		Short: "Delete a stored account",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sm := browser.NewSessionManager("")
+			if err := sm.DeleteAccount(args[0]); err != nil {
+				return err
+			}
+			fmt.Printf("Deleted account %q from database\n", args[0])
+			return nil
+		},
+	}
+
+	accountsCmd.AddCommand(accountsListCmd, accountsSwitchCmd, accountsDeleteCmd)
+
 	dbCmd.AddCommand(dbInfoCmd, dbDeleteCmd)
 
-	rootCmd.AddCommand(mcpCmd, serverCmd, loginCmd, postCmd, quoteCmd, likeCmd, unlikeCmd, retweetCmd, bookmarkCmd, followCmd, unfollowCmd, profileCmd, meCmd, discoverCmd, logoutCmd, dbCmd)
+	rootCmd.AddCommand(mcpCmd, serverCmd, loginCmd, accountsCmd, postCmd, quoteCmd, likeCmd, unlikeCmd, retweetCmd, bookmarkCmd, followCmd, unfollowCmd, profileCmd, meCmd, discoverCmd, logoutCmd, dbCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

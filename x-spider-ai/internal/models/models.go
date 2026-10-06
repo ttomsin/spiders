@@ -25,6 +25,14 @@ type UserProfile struct {
 	Verified        bool   `json:"verified"`
 }
 
+// AccountInfo represents metadata about a stored Twitter/X account session
+type AccountInfo struct {
+	ID         string `json:"id"`
+	ScreenName string `json:"screen_name,omitempty"`
+	IsActive   bool   `json:"is_active"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
 // Tweet represents a full, rich tweet object with replies and media
 type Tweet struct {
 	ID                  string      `json:"id"`

@@ -14,6 +14,7 @@ type Client struct {
 
 // ClientOptions allows configuring the underlying engine
 type ClientOptions struct {
+	AccountID   string
 	Headless    bool
 	ProxyURL    string
 	SessionPath string
@@ -23,6 +24,7 @@ type ClientOptions struct {
 // NewClient creates an initialized x-spider-ai client
 func NewClient(opts ClientOptions) (*Client, error) {
 	eng, err := browser.NewEngine(browser.Config{
+		AccountID:   opts.AccountID,
 		Headless:    opts.Headless,
 		ProxyURL:    opts.ProxyURL,
 		SessionPath: opts.SessionPath,
@@ -44,9 +46,29 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}, nil
 }
 
-// Login sets Twitter authentication tokens (auth_token and optional ct0)
+// Login sets Twitter authentication tokens (auth_token and optional ct0) for the active account
 func (c *Client) Login(authToken, ct0 string) error {
-	return c.engine.LoginWithTokens(authToken, ct0)
+	return c.engine.LoginWithTokens("default", "", authToken, ct0)
+}
+
+// LoginAccount sets authentication tokens for a designated named account
+func (c *Client) LoginAccount(accountID, screenName, authToken, ct0 string) error {
+	return c.engine.LoginWithTokens(accountID, screenName, authToken, ct0)
+}
+
+// SwitchAccount dynamically loads another account's session cookies in the browser
+func (c *Client) SwitchAccount(accountID string) error {
+	return c.engine.SwitchAccount(accountID)
+}
+
+// ListAccounts lists all registered accounts
+func (c *Client) ListAccounts() ([]AccountInfo, error) {
+	return c.engine.ListAccounts()
+}
+
+// DeleteAccount deletes a stored account
+func (c *Client) DeleteAccount(accountID string) error {
+	return c.engine.DeleteAccount(accountID)
 }
 
 // LoginInteractive opens the browser for the user to log in manually, then captures tokens automatically

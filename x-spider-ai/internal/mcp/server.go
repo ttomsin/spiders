@@ -363,6 +363,30 @@ func (s *Server) registerTools() {
 		resBytes, _ := json.MarshalIndent(prof, "", "  ")
 		return mcp.NewToolResultText(string(resBytes)), nil
 	})
+
+	// Tool: list_accounts
+	s.mcpServer.AddTool(mcp.NewTool("x_list_accounts",
+		mcp.WithDescription("List all saved Twitter/X account credentials in the local encrypted database"),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		accounts, err := s.client.ListAccounts()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to list accounts: %v", err)), nil
+		}
+		resBytes, _ := json.MarshalIndent(accounts, "", "  ")
+		return mcp.NewToolResultText(string(resBytes)), nil
+	})
+
+	// Tool: switch_account
+	s.mcpServer.AddTool(mcp.NewTool("x_switch_account",
+		mcp.WithDescription("Switch the active Twitter/X account for subsequent actions by account_id or screen_name"),
+		mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID or screen name to activate")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		accountID, _ := req.GetArguments()["account_id"].(string)
+		if err := s.client.SwitchAccount(accountID); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to switch account: %v", err)), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Successfully switched active account to %q", accountID)), nil
+	})
 }
 
 // ServeStdio starts the MCP server over standard input/output

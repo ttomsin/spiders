@@ -12,3 +12,4 @@ type ActionResult = models.ActionResult
 type PostTweetOptions = models.PostTweetOptions
 type ScrollOptions = models.ScrollOptions
 type DiscoverOptions = models.DiscoverOptions
+type AccountInfo = models.AccountInfo
