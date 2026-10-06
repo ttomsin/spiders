@@ -29,10 +29,10 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           COMMIT=$(git rev-parse --short HEAD)
           BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          DIST_DIR="dist"
+          DIST_DIR="${GITHUB_WORKSPACE}/dist"
           mkdir -p "${DIST_DIR}"
 
-          cd x-spider-ai || cd .
+          cd "${GITHUB_WORKSPACE}/x-spider-ai"
 
           TARGETS=(
             "windows/amd64/.exe"
@@ -46,14 +46,16 @@ jobs:
           for target in "${TARGETS[@]}"; do
             IFS="/" read -r OS ARCH EXT <<< "$target"
             OUT_NAME="xsai-${VERSION}-${OS}-${ARCH}${EXT}"
-            OUT_PATH="../${DIST_DIR}/${OUT_NAME}"
+            OUT_PATH="${DIST_DIR}/${OUT_NAME}"
 
             echo "Building ${OUT_NAME}..."
             GOOS="${OS}" GOARCH="${ARCH}" CGO_ENABLED=0 go build \
               -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_DATE}" \
               -o "${OUT_PATH}" ./cmd/x-spider-ai
 
-            sha256sum "${OUT_PATH}" | awk '{print $1}' > "${OUT_PATH}.sha256"
+            cd "${DIST_DIR}"
+            sha256sum "${OUT_NAME}" > "${OUT_NAME}.sha256"
+            cd "${GITHUB_WORKSPACE}/x-spider-ai"
           done
 
       - name: Create GitHub Release
