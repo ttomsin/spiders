@@ -134,6 +134,27 @@ The database is created automatically on your first login. You can inspect or ma
   .\x-spider-ai.exe db delete
   ```
 
+### Multi-Account Vault & Switching
+You can register and store multiple Twitter/X accounts in the encrypted SQLite vault and switch between them dynamically or target specific accounts per-action:
+
+- **Add an account by ID**:
+  ```bash
+  .\x-spider-ai.exe login <auth_token> <ct0> --id bot_alpha --handle @_alpha_bot
+  ```
+- **List all saved accounts**:
+  ```bash
+  .\x-spider-ai.exe accounts list
+  ```
+- **Switch the active default account**:
+  ```bash
+  .\x-spider-ai.exe accounts switch bot_alpha
+  ```
+- **Target a specific account on any command**:
+  ```bash
+  .\x-spider-ai.exe post "Hello from bot alpha!" --account bot_alpha
+  .\x-spider-ai.exe like 2107167470134133132 --account main
+  ```
+
 ---
 
 ## Hands-On Testing Guide (Try These Now!)
@@ -205,6 +226,8 @@ Now any LLM can call:
 - `x_send_direct_message(screen_name="_ttomsin", text="Hi from x-spider-ai!")`
 - `x_search_tweets(query="golang ai", tab="Latest")`
 - `x_discover(queries=["who started saying no wahala", "where did no wahala come from"], since="2020-01-01", until="2024-01-01", min_engagement=10, sort="engagement", include_replies=true)`
+- `x_list_accounts()`
+- `x_switch_account(account_id="bot_alpha")`
 
 ### REST / JSON API (For Python, Node.js, LangChain, AutoGen)
 Launch the standalone server:
@@ -214,6 +237,9 @@ Launch the standalone server:
 
 Available REST Endpoints:
 - `POST /api/v1/auth/login`
+- `GET  /api/v1/accounts`
+- `POST /api/v1/accounts/switch`
+- `DELETE /api/v1/accounts?account_id=...`
 - `POST /api/v1/tweets/post`
 - `POST /api/v1/tweets/like`
 - `POST /api/v1/tweets/unlike`
